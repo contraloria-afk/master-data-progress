@@ -102,8 +102,8 @@ const calcPct = (cats) => {
   const total = cats.reduce((sum, c) => {
     if (c.status === "Completado") return sum + 100;
     if (c.status === "Bloqueado") return sum + 0;
-    const q = parseFloat(c.quantitative) || 0;
-    return sum + Math.min(q, 99); // máximo 99% si no está Completado
+    const q = Number(c.quantitative) || 0;
+    return sum + Math.min(q, 99);
   }, 0);
   return Math.round(total / cats.length);
 };
@@ -400,9 +400,8 @@ function CatalogModal({ cat, user, clientId, modules, onSave, onClose }) {
     const payload = {
       status: f.status, consultor: f.consultor, responsable: f.responsable,
       fecha_revision: f.fecha_revision || null,
-      // Meta stays locked once set — only update if currently empty
-      meta: f.meta,
-      quantitative: f.quantitative,
+      meta: f.meta ? Number(f.meta) : null,
+      quantitative: f.quantitative ? Number(f.quantitative) : null,
       quality_veracidad: f.quality_veracidad || 0,
       quality_actualizacion: f.quality_actualizacion || 0,
       quality_cobertura: f.quality_cobertura || 0,
@@ -588,7 +587,7 @@ function ModuleView({ module, catalogs, user, clientId, modules, onUpdate, onBac
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}><ModIcon id={module.id} size={20} color={module.color} /> {module.name}</h2>
           <div style={{ color: "#94A3B8", fontSize: 12 }}>{catalogs.length} catálogos · {catalogs.filter(c => c.status === "Completado").length} completados</div>
         </div>
-        <div style={{ marginLeft: "auto" }}><Ring pct={pct} color={module.color} size={56} /></div>
+        <div style={{ marginLeft: "auto" }}><Ring pct={pct} color={pct >= 81 ? "#22C55E" : pct >= 60 ? "#F59E0B" : pct > 0 ? "#EF4444" : "#E2E8F0"} size={56} /></div>
       </div>
       {/* Filters */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
@@ -605,7 +604,7 @@ function ModuleView({ module, catalogs, user, clientId, modules, onUpdate, onBac
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: "#F8FAFC" }}>
-              {["Clave", "Catálogo", "Status", "Consultor", "Responsable", "Calidad", "Acción"].map(h => (
+              {["Clave", "Catálogo", "Status", "Consultor", "Responsable", "Avance", "Acción"].map(h => (
                 <th key={h} style={{ padding: "10px 14px", textAlign: "left", color: "#64748B", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #E2E8F0" }}>{h}</th>
               ))}
             </tr>
@@ -613,6 +612,11 @@ function ModuleView({ module, catalogs, user, clientId, modules, onUpdate, onBac
           <tbody>
             {filtered.map(c => {
               const qs = calcQuality(c);
+              const qpct = Number(c.quantitative) || 0;
+              // Semaphore gradient color based on quantitative %
+              const gradientColor = qpct === 0
+                ? "#E2E8F0"
+                : `linear-gradient(90deg, #EF4444 0%, #F59E0B ${Math.min(qpct, 50)}%, #22C55E ${Math.min(qpct * 1.5, 100)}%)`;
               return (
                 <tr key={c.id} style={{ borderBottom: "1px solid #F1F5F9" }}
                   onMouseEnter={e => e.currentTarget.style.background = "#F8FAFC"}
@@ -624,17 +628,26 @@ function ModuleView({ module, catalogs, user, clientId, modules, onUpdate, onBac
                       onChange={async v => {
                         const upd = await sbUpdate("catalogs", { status: v, updated_by: user.name, updated_at: new Date().toISOString() }, [["id", c.id]]);
                         if (c.status !== v) await sbInsert("activity_log", { client_id: clientId, module_id: c.module_id, catalog_key: c.catalog_key, catalog_name: c.catalog_name, action: "Cambio de status", old_value: c.status, new_value: v, author_name: user.name });
-                        onUpdate(upd || { ...c, status: v });
+                        const normalized = upd ? { ...upd, quantitative: upd.quantitative !== null ? Number(upd.quantitative) : null } : { ...c, status: v };
+                        onUpdate(normalized);
                       }} />
                   </td>
                   <td style={{ padding: "10px 14px", color: "#64748B", fontSize: 12 }}>{c.consultor || <span style={{ color: "#CBD5E1" }}>—</span>}</td>
                   <td style={{ padding: "10px 14px", color: "#64748B", fontSize: 12 }}>{c.responsable || <span style={{ color: "#CBD5E1" }}>—</span>}</td>
-                  <td style={{ padding: "10px 14px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                      <div style={{ width: 56, height: 5, background: "#F1F5F9", borderRadius: 3, overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: `${qs}%`, background: qs === 100 ? "#22C55E" : qs > 60 ? "#3B82F6" : "#F59E0B", transition: "width 0.4s" }} />
+                  <td style={{ padding: "10px 14px", minWidth: 120 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ flex: 1, height: 8, background: "#F1F5F9", borderRadius: 10, overflow: "hidden", position: "relative" }}>
+                        <div style={{
+                        height: "100%", width: `${qpct}%`,
+                          background: qpct === 0 ? "#E2E8F0" : qpct >= 81 ? "#22C55E" : qpct >= 60 ? "#F59E0B" : "#EF4444",
+                          borderRadius: 10,
+                          transition: "width 0.6s ease, background 0.4s ease",
+                          boxShadow: qpct > 0 ? "0 1px 3px rgba(0,0,0,0.15)" : "none"
+                        }} />
                       </div>
-                      <span style={{ fontSize: 11, color: "#94A3B8" }}>{qs}%</span>
+                      <span style={{ fontSize: 11, color: qpct === 0 ? "#CBD5E1" : qpct >= 81 ? "#15803D" : qpct >= 60 ? "#B45309" : "#B91C1C", fontWeight: 700, minWidth: 28, textAlign: "right" }}>
+                        {qpct > 0 ? `${qpct}%` : "—"}
+                      </span>
                     </div>
                   </td>
                   <td style={{ padding: "10px 14px" }}>
@@ -778,7 +791,13 @@ export default function App() {
       sbFetch("catalogs", { filters: [["client_id", cid]], order: { col: "catalog_key", asc: true } }),
       sbFetch("activity_log", { filters: [["client_id", cid]], order: { col: "created_at", asc: false } }),
     ]);
-    setCatalogs(cats);
+    // Normalize numeric fields
+    const normalized = cats.map(c => ({
+      ...c,
+      quantitative: c.quantitative !== null && c.quantitative !== undefined ? Number(c.quantitative) : null,
+      meta: c.meta !== null && c.meta !== undefined ? Number(c.meta) : null,
+    }));
+    setCatalogs(normalized);
     setActivity(acts.slice(0, 30));
     setLoading(false);
   }, []);
@@ -799,7 +818,15 @@ export default function App() {
     return () => clearInterval(pollRef.current);
   }, [clientId, user, loadAll]);
 
-  const handleUpdate = useCallback(u => { if (u?.id) setCatalogs(p => p.map(c => c.id === u.id ? u : c)); }, []);
+  const handleUpdate = useCallback(u => {
+    if (u?.id) {
+      setCatalogs(p => p.map(c => c.id === u.id ? {
+        ...u,
+        quantitative: u.quantitative !== null ? Number(u.quantitative) : null,
+        meta: u.meta !== null ? Number(u.meta) : null,
+      } : c));
+    }
+  }, []);
 
   if (!user) return <Login onLogin={u => setUser(u)} />;
 
@@ -922,7 +949,7 @@ export default function App() {
                   <span style={{ color: "#1D4ED8", fontWeight: 800, fontSize: 18 }}>{totalPct}%</span>
                 </div>
                 <div style={{ height: 12, background: "#F1F5F9", borderRadius: 6, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${totalPct}%`, background: "linear-gradient(90deg,#1D4ED8,#3B82F6)", borderRadius: 6, transition: "width 0.8s ease" }} />
+                  <div style={{ height: "100%", width: `${totalPct}%`, background: totalPct === 0 ? "#E2E8F0" : totalPct >= 81 ? "#22C55E" : totalPct >= 60 ? "#F59E0B" : "#EF4444", borderRadius: 6, transition: "width 0.8s ease, background 0.4s ease" }} />
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
                   <span style={{ color: "#94A3B8", fontSize: 11 }}>{totalDone} de {catalogs.length} catálogos completados</span>
@@ -950,10 +977,10 @@ export default function App() {
                           <div style={{ fontWeight: 700, fontSize: 13, color: "#1E293B" }}>{m.name}</div>
                           <div style={{ color: "#94A3B8", fontSize: 11, marginTop: 2 }}>{cats.length} catálogos</div>
                         </div>
-                        <Ring pct={pct} color={m.color} size={50} sw={4} />
+                        <Ring pct={pct} color={pct >= 81 ? "#22C55E" : pct >= 60 ? "#F59E0B" : pct > 0 ? "#EF4444" : "#E2E8F0"} size={50} sw={4} />
                       </div>
                       <div style={{ height: 4, background: "#F1F5F9", borderRadius: 2, overflow: "hidden", marginBottom: 8 }}>
-                        <div style={{ height: "100%", width: `${pct}%`, background: m.color, borderRadius: 2, transition: "width 0.6s" }} />
+                        <div style={{ height: "100%", width: `${pct}%`, background: pct === 0 ? "#E2E8F0" : pct >= 81 ? "#22C55E" : pct >= 60 ? "#F59E0B" : "#EF4444", borderRadius: 2, transition: "width 0.6s, background 0.4s" }} />
                       </div>
                       <div style={{ display: "flex", gap: 10 }}>
                         <span style={{ fontSize: 10, color: "#22C55E", fontWeight: 600 }}>✓ {done}</span>
