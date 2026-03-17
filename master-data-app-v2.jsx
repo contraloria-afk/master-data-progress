@@ -240,7 +240,7 @@ function StatusBadge({ status, onChange, readonly }) {
 }
 
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
-function Login({ onLogin, loginLogo, onLogoChange }) {
+function Login({ onLogin }) {
   const [users, setUsers] = useState([]);
   const [nombre, setNombre] = useState("");
   const [pin, setPin] = useState("");
@@ -272,26 +272,10 @@ function Login({ onLogin, loginLogo, onLogoChange }) {
       </div>
 
       <div style={{ width: 420, position: "relative", zIndex: 1 }}>
-        {/* Logo area — editable */}
-        <div style={{ textAlign: "center", marginBottom: 32, position: "relative" }}>
-          <div style={{ position: "relative", display: "inline-block" }}>
-            <img src={loginLogo} alt="Logo"
-              style={{ height: 90, objectFit: "contain", filter: "brightness(1.1) drop-shadow(0 0 20px rgba(59,130,246,0.4))" }} />
-            {/* Edit pencil */}
-            <button onClick={() => document.getElementById("login-logo-input").click()}
-              title="Cambiar logo"
-              style={{ position: "absolute", top: -8, right: -8, background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: "50%", width: 26, height: 26, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
-              ✏️
-            </button>
-            <input id="login-logo-input" type="file" accept="image/*" style={{ display: "none" }}
-              onChange={e => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = ev => onLogoChange(ev.target.result);
-                reader.readAsDataURL(file);
-              }} />
-          </div>
+        {/* Logo area — fijo ADVAN ONE */}
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <img src={ADVANONE_LOGO} alt="ADVAN ONE"
+            style={{ height: 90, objectFit: "contain", filter: "brightness(1.1) drop-shadow(0 0 20px rgba(59,130,246,0.4))" }} />
           <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, marginTop: 12, letterSpacing: "0.2em", textTransform: "uppercase" }}>
             Master Data Progress Report
           </div>
@@ -500,9 +484,6 @@ function CatalogModal({ cat, user, clientId, modules, users, onSave, onClose }) 
     setSaving(false);
     onClose();
   };
-
-  // Lock meta once it has a value
-  const metaLocked = !!cat.meta && cat.meta !== "" && cat.meta !== "0";
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
@@ -1027,7 +1008,6 @@ export default function App() {
   const [selClient, setSelClient] = useState(null);
   const [allUsers, setAllUsers] = useState([]);
   const [clientLogos, setClientLogos] = useState({});
-  const [loginLogo, setLoginLogo] = useState(ADVANONE_LOGO);
   const [view, setView] = useState("dashboard");
   const [activeMod, setActiveMod] = useState(null);
   const [activity, setActivity] = useState([]);
@@ -1079,7 +1059,7 @@ export default function App() {
     setCatalogs(prev => prev.map(c => c.id === updated.id ? normalize(updated) : c));
   }, []);
 
-  if (!user) return <Login onLogin={u => setUser(u)} loginLogo={loginLogo} onLogoChange={setLoginLogo} />;
+  if (!user) return <Login onLogin={u => setUser(u)} />;
 
   const modCats = (mid) => catalogs.filter(c => c.module_id === mid);
   const totalDone = catalogs.filter(c => c.status === "Completado").length;
@@ -1092,33 +1072,30 @@ export default function App() {
 
       {/* SIDEBAR */}
       <div style={{ width: 256, background: "#1E3A5F", display: "flex", flexDirection: "column", flexShrink: 0, height: "100vh", position: "sticky", top: 0, overflow: "hidden" }}>
-        {/* Logo */}
+        {/* Logo — editable por cliente */}
         <div style={{ padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.15)" }}>
-          {/* ADVAN PRO SUITE */}
-          <div style={{ textAlign: "center", marginBottom: 8 }}>
-            <img src={ADVAN_LOGO} alt="ADVAN" style={{ height: 38, objectFit: "contain", filter: "brightness(10) invert(0)" }} />
-            <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, marginTop: 3, letterSpacing: "0.12em", textTransform: "uppercase" }}>Master Data Progress</div>
+          <div style={{ textAlign: "center", position: "relative" }}>
+            <img
+              src={clientLogos[clientId] || ADVAN_LOGO}
+              alt="Logo"
+              style={{ height: 42, objectFit: "contain", filter: clientLogos[clientId] ? "none" : "brightness(10)", maxWidth: "90%" }} />
+            {user.role !== "cliente" && (
+              <button onClick={() => document.getElementById("client-logo-input").click()}
+                title="Cambiar logo del cliente"
+                style={{ position: "absolute", top: -4, right: 0, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "50%", width: 22, height: 22, cursor: "pointer", fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+                ✏️
+              </button>
+            )}
+            <input id="client-logo-input" type="file" accept="image/*" style={{ display: "none" }}
+              onChange={e => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = ev => setClientLogos(prev => ({ ...prev, [clientId]: ev.target.result }));
+                reader.readAsDataURL(file);
+              }} />
           </div>
-          {/* Client logo upload */}
-          {clientId && (
-            <div title="Clic para cambiar logo del cliente"
-              onClick={() => document.getElementById("client-logo-input").click()}
-              style={{ background: "rgba(255,255,255,0.06)", borderRadius: 8, padding: "6px 8px", border: "1px dashed rgba(255,255,255,0.15)", cursor: "pointer", position: "relative", textAlign: "center", minHeight: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {clientLogos[clientId]
-                ? <img src={clientLogos[clientId]} alt="Logo cliente" style={{ maxHeight: 36, maxWidth: "90%", objectFit: "contain" }} />
-                : <span style={{ color: "rgba(255,255,255,0.25)", fontSize: 11 }}>✏️ Logo del cliente</span>
-              }
-              <span style={{ position: "absolute", top: 3, right: 4, fontSize: 9, color: "rgba(255,255,255,0.4)" }}>✏️</span>
-            </div>
-          )}
-          <input id="client-logo-input" type="file" accept="image/*" style={{ display: "none" }}
-            onChange={e => {
-              const file = e.target.files[0];
-              if (!file) return;
-              const reader = new FileReader();
-              reader.onload = ev => setClientLogos(prev => ({ ...prev, [clientId]: ev.target.result }));
-              reader.readAsDataURL(file);
-            }} />
+          <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, marginTop: 4, letterSpacing: "0.12em", textTransform: "uppercase", textAlign: "center" }}>Master Data Progress</div>
         </div>
         {/* Client selector (admin/consultor only) */}
         {user.role !== "cliente" && (
