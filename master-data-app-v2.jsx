@@ -801,9 +801,19 @@ export default function App() {
   const [activity, setActivity] = useState([]);
   const [showAdmin, setShowAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
-  const pollRef = useRef(null);
 
   const clientId = user?.role === "cliente" ? user.client_id : (selClient || null);
+
+  const normalize = (c) => ({
+    ...c,
+    quantitative: c.quantitative !== null && c.quantitative !== undefined ? Number(c.quantitative) : null,
+    meta: c.meta !== null && c.meta !== undefined ? Number(c.meta) : null,
+    quality_veracidad: Number(c.quality_veracidad) || 0,
+    quality_actualizacion: Number(c.quality_actualizacion) || 0,
+    quality_cobertura: Number(c.quality_cobertura) || 0,
+    quality_consistencia: Number(c.quality_consistencia) || 0,
+    quality_autorizado: Number(c.quality_autorizado) || 0,
+  });
 
   const loadAll = useCallback(async (cid) => {
     setLoading(true);
@@ -811,18 +821,7 @@ export default function App() {
       sbFetch("catalogs", { filters: [["client_id", cid]], order: { col: "catalog_key", asc: true } }),
       sbFetch("activity_log", { filters: [["client_id", cid]], order: { col: "created_at", asc: false } }),
     ]);
-    // Normalize numeric fields
-    const normalized = cats.map(c => ({
-      ...c,
-      quantitative: c.quantitative !== null && c.quantitative !== undefined ? Number(c.quantitative) : null,
-      meta: c.meta !== null && c.meta !== undefined ? Number(c.meta) : null,
-      quality_veracidad: Number(c.quality_veracidad) || 0,
-      quality_actualizacion: Number(c.quality_actualizacion) || 0,
-      quality_cobertura: Number(c.quality_cobertura) || 0,
-      quality_consistencia: Number(c.quality_consistencia) || 0,
-      quality_autorizado: Number(c.quality_autorizado) || 0,
-    }));
-    setCatalogs(normalized);
+    setCatalogs(cats.map(normalize));
     setActivity(acts.slice(0, 30));
     setLoading(false);
   }, []);
@@ -838,35 +837,14 @@ export default function App() {
   useEffect(() => {
     if (!clientId || !user) return;
     loadAll(clientId);
-    clearInterval(pollRef.current);
-    pollRef.current = setInterval(() => loadAll(clientId), 8000);
-    return () => clearInterval(pollRef.current);
+    // NO polling — updates are handled locally on save
   }, [clientId, user, loadAll]);
 
-  const handleUpdate = useCallback((u) => {
-    if (!u?.id) return;
-    // Immediately update local state
-    const normalized = {
-      ...u,
-      quantitative: u.quantitative !== null && u.quantitative !== undefined ? Number(u.quantitative) : null,
-      meta: u.meta !== null && u.meta !== undefined ? Number(u.meta) : null,
-      quality_veracidad: Number(u.quality_veracidad) || 0,
-      quality_actualizacion: Number(u.quality_actualizacion) || 0,
-      quality_cobertura: Number(u.quality_cobertura) || 0,
-      quality_consistencia: Number(u.quality_consistencia) || 0,
-      quality_autorizado: Number(u.quality_autorizado) || 0,
-    };
-    setCatalogs(prev => prev.map(c => c.id === normalized.id ? { ...c, ...normalized } : c));
-    // Stop polling, reload once after 3s, then restart polling
-    clearInterval(pollRef.current);
-    setTimeout(() => {
-      if (clientId) {
-        loadAll(clientId).then(() => {
-          pollRef.current = setInterval(() => loadAll(clientId), 8000);
-        });
-      }
-    }, 3000);
-  }, [clientId, loadAll]);
+  // Called after saving a catalog — updates ONLY that one catalog in local state
+  const handleUpdate = useCallback((updated) => {
+    if (!updated?.id) return;
+    setCatalogs(prev => prev.map(c => c.id === updated.id ? normalize(updated) : c));
+  }, []);
 
   if (!user) return <Login onLogin={u => setUser(u)} />;
 
