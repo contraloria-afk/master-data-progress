@@ -23,11 +23,17 @@ const MODULE_ICONS = {
   VIG:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>`,
 };
 
-function ModIcon({ id, size = 18, color = "currentColor" }) {
+function ModIcon({ id, size = 18, color = "currentColor", bg = false }) {
   const svg = MODULE_ICONS[id] || `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>`;
-  return (
+  const icon = (
     <span style={{ width: size, height: size, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-      dangerouslySetInnerHTML={{ __html: svg.replace(/stroke="currentColor"/g, `stroke="${color}"`) }} />
+      dangerouslySetInnerHTML={{ __html: svg.replace(/stroke="currentColor"/g, `stroke="${bg ? "#fff" : color}"`) }} />
+  );
+  if (!bg) return icon;
+  return (
+    <div style={{ width: size + 16, height: size + 16, borderRadius: 10, background: color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: `0 2px 8px ${color}55` }}>
+      {icon}
+    </div>
   );
 }
 
@@ -234,7 +240,7 @@ function StatusBadge({ status, onChange, readonly }) {
 }
 
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
-function Login({ onLogin }) {
+function Login({ onLogin, loginLogo, onLogoChange }) {
   const [users, setUsers] = useState([]);
   const [nombre, setNombre] = useState("");
   const [pin, setPin] = useState("");
@@ -266,10 +272,26 @@ function Login({ onLogin }) {
       </div>
 
       <div style={{ width: 420, position: "relative", zIndex: 1 }}>
-        {/* Logo area */}
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <img src={ADVANONE_LOGO} alt="ADVAN ONE"
-            style={{ height: 90, objectFit: "contain", filter: "brightness(1.1) drop-shadow(0 0 20px rgba(59,130,246,0.4))" }} />
+        {/* Logo area — editable */}
+        <div style={{ textAlign: "center", marginBottom: 32, position: "relative" }}>
+          <div style={{ position: "relative", display: "inline-block" }}>
+            <img src={loginLogo} alt="Logo"
+              style={{ height: 90, objectFit: "contain", filter: "brightness(1.1) drop-shadow(0 0 20px rgba(59,130,246,0.4))" }} />
+            {/* Edit pencil */}
+            <button onClick={() => document.getElementById("login-logo-input").click()}
+              title="Cambiar logo"
+              style={{ position: "absolute", top: -8, right: -8, background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: "50%", width: 26, height: 26, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+              ✏️
+            </button>
+            <input id="login-logo-input" type="file" accept="image/*" style={{ display: "none" }}
+              onChange={e => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = ev => onLogoChange(ev.target.result);
+                reader.readAsDataURL(file);
+              }} />
+          </div>
           <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, marginTop: 12, letterSpacing: "0.2em", textTransform: "uppercase" }}>
             Master Data Progress Report
           </div>
@@ -666,7 +688,7 @@ function ModuleView({ module, catalogs, user, clientId, modules, users, onUpdate
         <button onClick={onBack} style={{ ...btnStyle("ghost"), border: "1px solid #E2E8F0", padding: "7px 14px" }}>← Volver</button>
         <div style={{ width: 4, height: 40, background: module.color, borderRadius: 2 }} />
         <div>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}><ModIcon id={module.id} size={20} color={module.color} /> {module.name}</h2>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}><ModIcon id={module.id} size={20} color={module.color} bg={true} /> {module.name}</h2>
           <div style={{ color: "#94A3B8", fontSize: 12 }}>{catalogs.length} catálogos · {catalogs.filter(c => c.status === "Completado").length} completados</div>
         </div>
         <div style={{ marginLeft: "auto" }}><Ring pct={pct} color={pct >= 81 ? "#22C55E" : pct >= 60 ? "#F59E0B" : pct > 0 ? "#EF4444" : "#E2E8F0"} size={56} /></div>
@@ -748,86 +770,236 @@ function AdminPanel({ modules, onModuleAdded, onClose }) {
   const [tab, setTab] = useState("clients");
   const [clients, setClients] = useState([]);
   const [newClient, setNewClient] = useState({ id: "", name: "", pin: "", contactName: "" });
+  const [selectedModules, setSelectedModules] = useState({});
   const [newMod, setNewMod] = useState({ id: "", name: "", icon: "📁", color: "#6366F1" });
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState(1); // 1=datos, 2=módulos, 3=confirmación
 
-  useEffect(() => { sbFetch("clients").then(setClients); }, []);
+  useEffect(() => {
+    sbFetch("clients").then(setClients);
+    // Pre-select all modules
+    const all = {};
+    modules.forEach(m => { all[m.id] = true; });
+    setSelectedModules(all);
+  }, [modules]);
+
+  const toggleMod = (id) => setSelectedModules(p => ({ ...p, [id]: !p[id] }));
+  const selCount = Object.values(selectedModules).filter(Boolean).length;
 
   const createClient = async () => {
-    if (!newClient.id || !newClient.name || !newClient.pin) { setMsg("⚠️ Completa ID, nombre y PIN"); return; }
     setBusy(true);
-    const cid = newClient.id.toLowerCase().replace(/\s+/g, "_");
-    await sbInsert("clients", { id: cid, name: newClient.name });
-    await sbInsert("profiles", { name: newClient.contactName || newClient.name, role: "cliente", client_id: cid, pin: newClient.pin, avatar: newClient.name.slice(0, 2).toUpperCase() });
-    await sbRpc("init_client_catalogs", { p_client_id: cid });
-    const updated = await sbFetch("clients");
-    setClients(updated);
-    setMsg("✓ Cliente creado e inicializado con 130 catálogos");
-    setNewClient({ id: "", name: "", pin: "", contactName: "" });
-    setBusy(false);
+    try {
+      const cid = newClient.id.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+      // 1. Create client
+      await sbInsert("clients", { id: cid, name: newClient.name });
+      // 2. Create user profile
+      await sbInsert("profiles", {
+        name: newClient.contactName || newClient.name,
+        role: "cliente", client_id: cid,
+        pin: newClient.pin,
+        avatar: newClient.name.slice(0, 2).toUpperCase()
+      });
+      // 3. Insert catalogs only for selected modules
+      // First get all catalog templates from existing client or use init function
+      const selectedModIds = Object.entries(selectedModules).filter(([,v])=>v).map(([k])=>k);
+
+      for (const modId of selectedModIds) {
+        // Get catalog names from any existing client's data for this module
+        const templates = await sbFetch("catalogs", { filters: [["module_id", modId]] });
+        const unique = [];
+        const seen = new Set();
+        templates.forEach(t => {
+          // Use catalog_key pattern without client prefix
+          const baseKey = t.catalog_key;
+          if (!seen.has(baseKey)) { seen.add(baseKey); unique.push(t); }
+        });
+        // Insert catalogs for new client
+        for (const t of unique) {
+          await sbInsert("catalogs", {
+            client_id: cid, module_id: modId,
+            catalog_key: t.catalog_key.replace(/^[^_]+/, cid.slice(0,3).toUpperCase()),
+            catalog_name: t.catalog_name
+          }).catch(() => {});
+        }
+      }
+
+      const updated = await sbFetch("clients");
+      setClients(updated);
+      setMsg(`✓ Cliente "${newClient.name}" creado con ${selectedModIds.length} módulos y sus catálogos`);
+      setNewClient({ id: "", name: "", pin: "", contactName: "" });
+      setStep(1);
+      setBusy(false);
+    } catch(e) {
+      setMsg("⚠️ Error al crear el cliente. Verifica los datos.");
+      setBusy(false);
+    }
   };
 
   const createModule = async () => {
     if (!newMod.id || !newMod.name) { setMsg("⚠️ ID y nombre son requeridos"); return; }
     await sbInsert("modules", { id: newMod.id.toUpperCase(), name: newMod.name, icon: newMod.icon, color: newMod.color, sort_order: modules.length + 1 });
-    setMsg("✓ Módulo creado. Los catálogos para clientes existentes deberán agregarse manualmente.");
+    setMsg("✓ Módulo creado.");
     onModuleAdded();
     setNewMod({ id: "", name: "", icon: "📁", color: "#6366F1" });
   };
 
+  const canNext1 = newClient.id && newClient.name && newClient.pin && newClient.contactName;
+
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 640, maxHeight: "88vh", overflow: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.15)" }}>
-        <div style={{ background: "#1E3A5F", padding: "18px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 660, maxHeight: "92vh", overflow: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.2)" }}>
+        {/* Header */}
+        <div style={{ background: "#1E3A5F", padding: "18px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, zIndex: 10 }}>
           <div style={{ color: "#fff", fontWeight: 700, fontSize: 16 }}>⚙️ Panel de Administración</div>
           <button onClick={onClose} style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>✕</button>
         </div>
+
         <div style={{ padding: "20px 24px" }}>
           {/* Tabs */}
           <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#F1F5F9", borderRadius: 10, padding: 4 }}>
             {[["clients", "👥 Clientes"], ["modules", "📦 Módulos"]].map(([k, l]) => (
-              <button key={k} onClick={() => setTab(k)}
+              <button key={k} onClick={() => { setTab(k); setStep(1); setMsg(""); }}
                 style={{ flex: 1, background: tab === k ? "#fff" : "transparent", border: "none", borderRadius: 8, padding: "8px", cursor: "pointer", fontWeight: tab === k ? 700 : 400, color: tab === k ? "#1D4ED8" : "#64748B", fontSize: 13 }}>{l}</button>
             ))}
           </div>
+
           {msg && <div style={{ background: msg.startsWith("⚠️") ? "#FEF2F2" : "#F0FDF4", border: `1px solid ${msg.startsWith("⚠️") ? "#FCA5A5" : "#86EFAC"}`, borderRadius: 8, padding: "10px 14px", color: msg.startsWith("⚠️") ? "#B91C1C" : "#15803D", fontSize: 13, marginBottom: 16 }}>{msg}</div>}
 
+          {/* ── CLIENTES TAB ── */}
           {tab === "clients" && <>
-            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 14, color: "#1E293B" }}>Crear nuevo cliente</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
-              {[["id", "ID / Slug (ej: empresa_abc)"], ["name", "Nombre completo de la empresa"], ["contactName", "Nombre del contacto principal"], ["pin", "PIN de acceso (4 dígitos)"]].map(([k, l]) => (
-                <div key={k}>
-                  <label style={lbl}>{l}</label>
-                  <input value={newClient[k] || ""} onChange={e => setNewClient(p => ({ ...p, [k]: e.target.value }))} style={inp(true)} />
+            {/* Step indicator */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
+              {[["1", "Datos del cliente"], ["2", "Seleccionar módulos"], ["3", "Confirmar"]].map(([n, l], i) => (
+                <div key={n} style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
+                  <div style={{ width: 26, height: 26, borderRadius: "50%", background: step >= Number(n) ? "#1D4ED8" : "#E2E8F0", color: step >= Number(n) ? "#fff" : "#94A3B8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{n}</div>
+                  <span style={{ fontSize: 11, color: step >= Number(n) ? "#1D4ED8" : "#94A3B8", fontWeight: step === Number(n) ? 700 : 400 }}>{l}</span>
+                  {i < 2 && <div style={{ flex: 1, height: 2, background: step > Number(n) ? "#1D4ED8" : "#E2E8F0", borderRadius: 2 }} />}
                 </div>
               ))}
             </div>
-            <button onClick={createClient} disabled={busy} style={{ ...btnStyle("primary"), marginBottom: 24, opacity: busy ? 0.7 : 1 }}>
-              {busy ? "Creando..." : "+ Crear cliente e inicializar 130 catálogos"}
-            </button>
-            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, color: "#1E293B" }}>Clientes existentes ({clients.length})</h3>
-            {clients.map(c => (
-              <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", background: "#F8FAFC", borderRadius: 8, marginBottom: 6 }}>
-                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#E0F2FE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#0369A1" }}>
-                  {c.name.slice(0, 2).toUpperCase()}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: "#1E293B" }}>{c.name}</div>
-                  <div style={{ fontSize: 11, color: "#94A3B8" }}>ID: {c.id}</div>
-                </div>
-                <span style={{ fontSize: 11, background: "#F0FDF4", color: "#15803D", border: "1px solid #86EFAC", borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>Activo</span>
+
+            {/* STEP 1: Client data */}
+            {step === 1 && <>
+              <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 14, color: "#1E293B" }}>Datos del nuevo cliente</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
+                {[
+                  ["name", "Nombre completo de la empresa", "text"],
+                  ["contactName", "Nombre del contacto principal", "text"],
+                  ["id", "ID / Slug (ej: empresa_abc)", "text"],
+                  ["pin", "PIN de acceso (4-6 dígitos)", "password"],
+                ].map(([k, l, t]) => (
+                  <div key={k}>
+                    <label style={lbl}>{l}</label>
+                    <input type={t} value={newClient[k] || ""} onChange={e => setNewClient(p => ({ ...p, [k]: e.target.value }))}
+                      style={inp(true)} placeholder={k === "id" ? "sin espacios ni acentos" : ""} />
+                  </div>
+                ))}
               </div>
-            ))}
+              <button onClick={() => canNext1 && setStep(2)} disabled={!canNext1}
+                style={{ ...btnStyle("primary"), width: "100%", justifyContent: "center", opacity: canNext1 ? 1 : 0.5 }}>
+                Siguiente → Seleccionar módulos
+              </button>
+            </>}
+
+            {/* STEP 2: Module selection */}
+            {step === 2 && <>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, color: "#1E293B", margin: 0 }}>Módulos del cliente</h3>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => { const a={}; modules.forEach(m=>{a[m.id]=true}); setSelectedModules(a); }}
+                    style={{ fontSize: 11, color: "#1D4ED8", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>Seleccionar todos</button>
+                  <button onClick={() => setSelectedModules({})}
+                    style={{ fontSize: 11, color: "#64748B", background: "none", border: "none", cursor: "pointer" }}>Limpiar</button>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20 }}>
+                {modules.map(m => {
+                  const sel = !!selectedModules[m.id];
+                  return (
+                    <label key={m.id} onClick={() => toggleMod(m.id)}
+                      style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: `2px solid ${sel ? m.color : "#E2E8F0"}`, background: sel ? m.color + "12" : "#F8FAFC", cursor: "pointer", userSelect: "none", transition: "all 0.15s" }}>
+                      <div style={{ width: 18, height: 18, borderRadius: 4, background: sel ? m.color : "#E2E8F0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.15s" }}>
+                        {sel && <span style={{ color: "#fff", fontSize: 11, fontWeight: 700 }}>✓</span>}
+                      </div>
+                      <ModIcon id={m.id} size={16} color={sel ? m.color : "#94A3B8"} />
+                      <span style={{ fontSize: 12, fontWeight: sel ? 700 : 400, color: sel ? "#1E293B" : "#64748B" }}>{m.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 12, color: "#1D4ED8" }}>
+                <strong>{selCount}</strong> de {modules.length} módulos seleccionados
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => setStep(1)} style={{ ...btnStyle("ghost"), border: "1px solid #E2E8F0", flex: 1, justifyContent: "center" }}>← Atrás</button>
+                <button onClick={() => selCount > 0 && setStep(3)} disabled={selCount === 0}
+                  style={{ ...btnStyle("primary"), flex: 2, justifyContent: "center", opacity: selCount > 0 ? 1 : 0.5 }}>
+                  Siguiente → Confirmar
+                </button>
+              </div>
+            </>}
+
+            {/* STEP 3: Confirm */}
+            {step === 3 && <>
+              <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16, color: "#1E293B" }}>Confirmar creación</h3>
+              <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: "16px 18px", marginBottom: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+                  {[["Empresa", newClient.name], ["Contacto", newClient.contactName], ["ID", newClient.id], ["PIN", "••••"]].map(([l, v]) => (
+                    <div key={l}>
+                      <div style={{ fontSize: 10, color: "#94A3B8", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>{l}</div>
+                      <div style={{ fontSize: 13, color: "#1E293B", fontWeight: 600, marginTop: 2 }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ borderTop: "1px solid #E2E8F0", paddingTop: 12 }}>
+                  <div style={{ fontSize: 10, color: "#94A3B8", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Módulos asignados ({selCount})</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {modules.filter(m => selectedModules[m.id]).map(m => (
+                      <span key={m.id} style={{ background: m.color + "18", color: m.color, border: `1px solid ${m.color}44`, borderRadius: 6, padding: "3px 8px", fontSize: 11, fontWeight: 600 }}>
+                        {m.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => setStep(2)} style={{ ...btnStyle("ghost"), border: "1px solid #E2E8F0", flex: 1, justifyContent: "center" }}>← Atrás</button>
+                <button onClick={createClient} disabled={busy}
+                  style={{ ...btnStyle("success"), flex: 2, justifyContent: "center", opacity: busy ? 0.7 : 1 }}>
+                  {busy ? "Creando cliente..." : `✓ Crear cliente con ${selCount} módulos`}
+                </button>
+              </div>
+            </>}
+
+            {/* Existing clients list */}
+            {step === 1 && clients.length > 0 && <>
+              <div style={{ marginTop: 28, borderTop: "1px solid #F1F5F9", paddingTop: 16 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, color: "#1E293B" }}>Clientes existentes ({clients.length})</h3>
+                {clients.map(c => (
+                  <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", background: "#F8FAFC", borderRadius: 8, marginBottom: 6 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#E0F2FE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#0369A1" }}>
+                      {c.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: "#1E293B" }}>{c.name}</div>
+                      <div style={{ fontSize: 11, color: "#94A3B8" }}>ID: {c.id}</div>
+                    </div>
+                    <span style={{ fontSize: 11, background: "#F0FDF4", color: "#15803D", border: "1px solid #86EFAC", borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>Activo</span>
+                  </div>
+                ))}
+              </div>
+            </>}
           </>}
 
+          {/* ── MÓDULOS TAB ── */}
           {tab === "modules" && <>
             <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 14, color: "#1E293B" }}>Crear nuevo módulo</h3>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
               <div><label style={lbl}>ID (ej: NUE)</label><input value={newMod.id} onChange={e => setNewMod(p => ({ ...p, id: e.target.value.toUpperCase() }))} style={inp(true)} /></div>
               <div><label style={lbl}>Nombre</label><input value={newMod.name} onChange={e => setNewMod(p => ({ ...p, name: e.target.value }))} style={inp(true)} /></div>
               <div><label style={lbl}>Ícono (emoji)</label><input value={newMod.icon} onChange={e => setNewMod(p => ({ ...p, icon: e.target.value }))} style={{ ...inp(true), width: 80 }} /></div>
-              <div><label style={lbl}>Color del módulo</label><input type="color" value={newMod.color} onChange={e => setNewMod(p => ({ ...p, color: e.target.value }))} style={{ ...inp(true), width: 60, padding: 4, cursor: "pointer" }} /></div>
+              <div><label style={lbl}>Color</label><input type="color" value={newMod.color} onChange={e => setNewMod(p => ({ ...p, color: e.target.value }))} style={{ ...inp(true), width: 60, padding: 4, cursor: "pointer" }} /></div>
             </div>
             <button onClick={createModule} style={{ ...btnStyle("primary"), marginBottom: 24 }}>+ Crear módulo</button>
             <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Módulos existentes ({modules.length})</h3>
@@ -835,6 +1007,7 @@ function AdminPanel({ modules, onModuleAdded, onClose }) {
               <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "#F8FAFC", borderRadius: 8, marginBottom: 4 }}>
                 <div style={{ width: 8, height: 8, borderRadius: "50%", background: m.color, flexShrink: 0 }} />
                 <span style={{ fontSize: 12, fontFamily: "monospace", color: "#64748B", width: 50 }}>{m.id}</span>
+                <ModIcon id={m.id} size={16} color={m.color} />
                 <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{m.name}</span>
               </div>
             ))}
@@ -854,6 +1027,7 @@ export default function App() {
   const [selClient, setSelClient] = useState(null);
   const [allUsers, setAllUsers] = useState([]);
   const [clientLogos, setClientLogos] = useState({});
+  const [loginLogo, setLoginLogo] = useState(ADVANONE_LOGO);
   const [view, setView] = useState("dashboard");
   const [activeMod, setActiveMod] = useState(null);
   const [activity, setActivity] = useState([]);
@@ -905,7 +1079,7 @@ export default function App() {
     setCatalogs(prev => prev.map(c => c.id === updated.id ? normalize(updated) : c));
   }, []);
 
-  if (!user) return <Login onLogin={u => setUser(u)} />;
+  if (!user) return <Login onLogin={u => setUser(u)} loginLogo={loginLogo} onLogoChange={setLoginLogo} />;
 
   const modCats = (mid) => catalogs.filter(c => c.module_id === mid);
   const totalDone = catalogs.filter(c => c.status === "Completado").length;
@@ -1073,7 +1247,7 @@ export default function App() {
                       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: m.color }} />
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                         <div>
-                          <ModIcon id={m.id} size={28} color={m.color} />
+                        <ModIcon id={m.id} size={28} color={m.color} bg={true} />
                           <div style={{ fontWeight: 700, fontSize: 13, color: "#1E293B" }}>{m.name}</div>
                           <div style={{ color: "#94A3B8", fontSize: 11, marginTop: 2 }}>{cats.length} catálogos</div>
                         </div>
