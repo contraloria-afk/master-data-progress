@@ -816,6 +816,11 @@ export default function App() {
       ...c,
       quantitative: c.quantitative !== null && c.quantitative !== undefined ? Number(c.quantitative) : null,
       meta: c.meta !== null && c.meta !== undefined ? Number(c.meta) : null,
+      quality_veracidad: Number(c.quality_veracidad) || 0,
+      quality_actualizacion: Number(c.quality_actualizacion) || 0,
+      quality_cobertura: Number(c.quality_cobertura) || 0,
+      quality_consistencia: Number(c.quality_consistencia) || 0,
+      quality_autorizado: Number(c.quality_autorizado) || 0,
     }));
     setCatalogs(normalized);
     setActivity(acts.slice(0, 30));
@@ -852,8 +857,15 @@ export default function App() {
       quality_autorizado: Number(u.quality_autorizado) || 0,
     };
     setCatalogs(prev => prev.map(c => c.id === normalized.id ? { ...c, ...normalized } : c));
-    // Also reload from Supabase after 1s to guarantee sync
-    setTimeout(() => { if (clientId) loadAll(clientId); }, 1000);
+    // Stop polling, reload once after 3s, then restart polling
+    clearInterval(pollRef.current);
+    setTimeout(() => {
+      if (clientId) {
+        loadAll(clientId).then(() => {
+          pollRef.current = setInterval(() => loadAll(clientId), 8000);
+        });
+      }
+    }, 3000);
   }, [clientId, loadAll]);
 
   if (!user) return <Login onLogin={u => setUser(u)} />;
