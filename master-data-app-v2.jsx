@@ -5,22 +5,22 @@ const ADVANONE_LOGO = "data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUN
 
 // ── MODULE SVG ICONS ──────────────────────────────────────────────────────────
 const MODULE_ICONS = {
-  CONT: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="1" y="8" width="22" height="12" rx="1"/><path d="M16 8V6a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>`,
-  TRA:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M1 3h15v13H1z"/><path d="M16 8h4l3 4v4h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`,
-  LIQ:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg>`,
-  INT:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48 0a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg>`,
-  ADM:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
+  CONT: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 8V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8"/><path d="M23 3H1v5h22V3z"/><line x1="10" y1="12" x2="14" y2="12"/></svg>`,
+  TRA:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`,
+  LIQ:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>`,
+  INT:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="3" width="4" height="4" rx="1"/><rect x="10" y="3" width="4" height="4" rx="1"/><rect x="18" y="3" width="4" height="4" rx="1"/><rect x="2" y="10" width="4" height="4" rx="1"/><rect x="10" y="10" width="4" height="4" rx="1"/><rect x="18" y="10" width="4" height="4" rx="1"/><rect x="2" y="17" width="4" height="4" rx="1"/><rect x="10" y="17" width="4" height="4" rx="1"/><rect x="18" y="17" width="4" height="4" rx="1"/></svg>`,
+  ADM:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M8.46 8.46a5 5 0 0 0 0 7.07"/></svg>`,
   AF:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
   CON:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>`,
-  BAN:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
-  CCH:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
-  CXP:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
-  CXC:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`,
-  MAN:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>`,
+  BAN:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><circle cx="12" cy="15" r="2"/></svg>`,
+  CCH:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/><line x1="12" y1="6" x2="12" y2="6.01"/></svg>`,
+  CXP:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="10" x2="15" y2="10"/><line x1="12" y1="7" x2="12" y2="13"/></svg>`,
+  CXC:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/><line x1="12" y1="15" x2="12" y2="21"/><line x1="9" y1="18" x2="15" y2="18"/></svg>`,
+  MAN:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/><path d="M14.12 9.88a3 3 0 0 1 0 4.24"/><path d="M9.88 14.12a3 3 0 0 1 0-4.24"/></svg>`,
   COM:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>`,
-  ALM:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`,
+  ALM:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M5 8h14M5 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm14 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>`,
   LLA:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="22"/><line x1="2" y1="12" x2="8" y2="12"/><line x1="16" y1="12" x2="22" y2="12"/></svg>`,
-  VIG:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+  VIG:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>`,
 };
 
 function ModIcon({ id, size = 18, color = "currentColor" }) {
@@ -374,7 +374,38 @@ function SemaphoreField({ label, value, onChange, readonly }) {
   );
 }
 
-function CatalogModal({ cat, user, clientId, modules, onSave, onClose }) {
+// ── META PASSWORD MODAL ───────────────────────────────────────────────────────
+function MetaPasswordModal({ onConfirm, onCancel, users }) {
+  const [pwd, setPwd] = useState("");
+  const [err, setErr] = useState("");
+  const verify = () => {
+    const match = users.find(u => u.pin === pwd && (u.role === "consultor" || u.role === "admin"));
+    if (!match) { setErr("PIN incorrecto o no autorizado"); return; }
+    onConfirm(match.name);
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#fff", borderRadius: 14, padding: "28px 32px", width: 360, boxShadow: "0 20px 50px rgba(0,0,0,0.2)" }}>
+        <div style={{ fontSize: 28, textAlign: "center", marginBottom: 8 }}>🔐</div>
+        <h3 style={{ textAlign: "center", margin: "0 0 6px", color: "#1E293B", fontSize: 16, fontWeight: 700 }}>Firma Electrónica</h3>
+        <p style={{ textAlign: "center", color: "#64748B", fontSize: 13, marginBottom: 20 }}>Ingresa tu PIN de consultor para modificar la Meta</p>
+        <label style={lbl}>PIN de autorización</label>
+        <input type="password" value={pwd} onChange={e => { setPwd(e.target.value); setErr(""); }}
+          onKeyDown={e => e.key === "Enter" && verify()}
+          placeholder="••••••" maxLength={6}
+          style={{ ...inp(), textAlign: "center", letterSpacing: "0.4em", fontSize: 20, marginBottom: 10 }} />
+        {err && <div style={{ color: "#EF4444", fontSize: 12, textAlign: "center", marginBottom: 10 }}>{err}</div>}
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onCancel} style={{ ...btnStyle("ghost"), flex: 1, justifyContent: "center", border: "1px solid #E2E8F0" }}>Cancelar</button>
+          <button onClick={verify} style={{ ...btnStyle("primary"), flex: 1, justifyContent: "center" }}>Autorizar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function CatalogModal({ cat, user, clientId, modules, users, onSave, onClose }) {
   const [f, setF] = useState({
     ...cat,
     // Auto-fill today's date if empty
@@ -383,6 +414,9 @@ function CatalogModal({ cat, user, clientId, modules, onSave, onClose }) {
   const [obsHistory, setObsHistory] = useState([]);
   const [newObs, setNewObs] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showMetaPwd, setShowMetaPwd] = useState(false);
+  const [metaLocked, setMetaLocked] = useState(!!cat.meta && Number(cat.meta) > 0);
+  const [pendingMeta, setPendingMeta] = useState("");
   const readonly = user.role === "cliente";
   const mod = modules.find(m => m.id === cat.module_id);
   const obsRef = useRef(null);
@@ -461,6 +495,17 @@ function CatalogModal({ cat, user, clientId, modules, onSave, onClose }) {
         </div>
 
         <div style={{ padding: "20px 22px" }}>
+          {showMetaPwd && (
+            <MetaPasswordModal users={users}
+              onConfirm={(authorName) => {
+                setF(p => ({ ...p, meta: pendingMeta }));
+                setMetaLocked(false);
+                setShowMetaPwd(false);
+                setPendingMeta("");
+              }}
+              onCancel={() => { setShowMetaPwd(false); setPendingMeta(""); }}
+            />
+          )}
           {/* Row 1: Status + Fecha */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
             <div>
@@ -495,13 +540,24 @@ function CatalogModal({ cat, user, clientId, modules, onSave, onClose }) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 20 }}>
             <div>
               <label style={lbl}>
-                Meta (%) {metaLocked && !readonly && <span style={{ color: "#F59E0B", fontSize: 9 }}>🔒 FIJA</span>}
+                Meta (%) {metaLocked && !readonly && <span style={{ color: "#F59E0B", fontSize: 10, cursor: "pointer" }} onClick={() => { setPendingMeta(String(f.meta || "")); setShowMetaPwd(true); }}>🔒 Cambiar</span>}
               </label>
-              <input type="number" min="0" max="100" value={f.meta || ""}
-                onChange={e => !metaLocked && set("meta", e.target.value)}
-                readOnly={readonly || metaLocked}
-                style={readonly || metaLocked ? { ...inpRO, background: metaLocked ? "#FFF7ED" : undefined } : inp()}
-                placeholder="0-100" />
+              {metaLocked && !readonly ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ ...inp(), background: "#FFF7ED", color: "#92400E", fontWeight: 700, flex: 1 }}>{f.meta}%</div>
+                  <button onClick={() => { setPendingMeta(String(f.meta || "")); setShowMetaPwd(true); }}
+                    style={{ background: "#FFF7ED", border: "1px solid #FCD34D", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 12, color: "#92400E" }}>✏️</button>
+                </div>
+              ) : (
+                <input type="number" min="0" max="100"
+                  value={f.meta || ""}
+                  onChange={e => {
+                    if (metaLocked) { setPendingMeta(e.target.value); setShowMetaPwd(true); }
+                    else { set("meta", e.target.value); if (e.target.value) setMetaLocked(true); }
+                  }}
+                  readOnly={readonly}
+                  style={readonly ? inpRO : inp()} placeholder="0-100" />
+              )}
             </div>
             <div>
               <label style={lbl}>Quantitative (%)</label>
@@ -589,7 +645,7 @@ function CatalogModal({ cat, user, clientId, modules, onSave, onClose }) {
 }
 
 // ── MODULE VIEW ───────────────────────────────────────────────────────────────
-function ModuleView({ module, catalogs, user, clientId, modules, onUpdate, onBack }) {
+function ModuleView({ module, catalogs, user, clientId, modules, users, onUpdate, onBack }) {
   const [modal, setModal] = useState(null);
   const [search, setSearch] = useState("");
   const [fStatus, setFStatus] = useState("Todos");
@@ -603,7 +659,7 @@ function ModuleView({ module, catalogs, user, clientId, modules, onUpdate, onBac
 
   return (
     <div style={{ fontFamily: "'Segoe UI',system-ui,sans-serif", color: "#1E293B" }}>
-      {sel && <CatalogModal cat={sel} user={user} clientId={clientId} modules={modules}
+      {sel && <CatalogModal cat={sel} user={user} clientId={clientId} modules={modules} users={users}
         onSave={updated => onUpdate(updated)} onClose={() => setModal(null)} />}
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 22, flexWrap: "wrap" }}>
@@ -796,6 +852,8 @@ export default function App() {
   const [catalogs, setCatalogs] = useState([]);
   const [clients, setClients] = useState([]);
   const [selClient, setSelClient] = useState(null);
+  const [allUsers, setAllUsers] = useState([]);
+  const [clientLogos, setClientLogos] = useState({});
   const [view, setView] = useState("dashboard");
   const [activeMod, setActiveMod] = useState(null);
   const [activity, setActivity] = useState([]);
@@ -829,6 +887,7 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     sbFetch("modules", { order: { col: "sort_order", asc: true } }).then(setModules);
+    sbFetch("profiles").then(setAllUsers);
     if (user.role !== "cliente") {
       sbFetch("clients").then(d => { setClients(d); if (d.length) setSelClient(d[0].id); });
     }
@@ -860,9 +919,32 @@ export default function App() {
       {/* SIDEBAR */}
       <div style={{ width: 256, background: "#1E3A5F", display: "flex", flexDirection: "column", flexShrink: 0, height: "100vh", position: "sticky", top: 0, overflow: "hidden" }}>
         {/* Logo */}
-        <div style={{ padding: "18px 16px 14px", borderBottom: "1px solid rgba(255,255,255,0.08)", textAlign: "center", background: "rgba(0,0,0,0.15)" }}>
-          <img src={ADVAN_LOGO} alt="ADVAN" style={{ height: 48, objectFit: "contain", filter: "brightness(10) invert(0)" }} />
-          <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 10, marginTop: 8, letterSpacing: "0.12em", textTransform: "uppercase" }}>Master Data Progress</div>
+        <div style={{ padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.15)" }}>
+          {/* ADVAN PRO SUITE */}
+          <div style={{ textAlign: "center", marginBottom: 8 }}>
+            <img src={ADVAN_LOGO} alt="ADVAN" style={{ height: 38, objectFit: "contain", filter: "brightness(10) invert(0)" }} />
+            <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, marginTop: 3, letterSpacing: "0.12em", textTransform: "uppercase" }}>Master Data Progress</div>
+          </div>
+          {/* Client logo upload */}
+          {clientId && (
+            <div title="Clic para cambiar logo del cliente"
+              onClick={() => document.getElementById("client-logo-input").click()}
+              style={{ background: "rgba(255,255,255,0.06)", borderRadius: 8, padding: "6px 8px", border: "1px dashed rgba(255,255,255,0.15)", cursor: "pointer", position: "relative", textAlign: "center", minHeight: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {clientLogos[clientId]
+                ? <img src={clientLogos[clientId]} alt="Logo cliente" style={{ maxHeight: 36, maxWidth: "90%", objectFit: "contain" }} />
+                : <span style={{ color: "rgba(255,255,255,0.25)", fontSize: 11 }}>✏️ Logo del cliente</span>
+              }
+              <span style={{ position: "absolute", top: 3, right: 4, fontSize: 9, color: "rgba(255,255,255,0.4)" }}>✏️</span>
+            </div>
+          )}
+          <input id="client-logo-input" type="file" accept="image/*" style={{ display: "none" }}
+            onChange={e => {
+              const file = e.target.files[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = ev => setClientLogos(prev => ({ ...prev, [clientId]: ev.target.result }));
+              reader.readAsDataURL(file);
+            }} />
         </div>
         {/* Client selector (admin/consultor only) */}
         {user.role !== "cliente" && (
@@ -1017,7 +1099,7 @@ export default function App() {
             <ModuleView
               module={modules.find(m => m.id === activeMod)}
               catalogs={modCats(activeMod)}
-              user={user} clientId={clientId} modules={modules}
+              user={user} clientId={clientId} modules={modules} users={allUsers}
               onUpdate={handleUpdate}
               onBack={() => { setView("dashboard"); setActiveMod(null); }} />
           )}
