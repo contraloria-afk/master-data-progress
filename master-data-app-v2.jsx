@@ -781,33 +781,43 @@ function AdminPanel({ modules, onModuleAdded, onClose }) {
         pin: newClient.pin,
         avatar: newClient.name.slice(0, 2).toUpperCase()
       });
-      // 3. Insert catalogs only for selected modules
-      // First get all catalog templates from existing client or use init function
+      // 3. Catalog definitions per module
+      const CATALOG_DEFS = {
+        CONT: ["Marcas","Modelos","Accesorios de Unidad","Aparatos de Medición","Tipos de Unidad","Tipos de Remolque","Líneas de Transporte","Circuitos","Estatus de Unidades","Causas de Inactividad","Incidencias","Documentos de Viaje","Tipo de Equipo Periférico","Equipo Periférico","Aparatos de Medición Kilometraje","Grupos","Casetas","Tipos de Combustible","Gasolineras","Localidades","Puntos de Interés","Tramos","Status Operadores","Subtipos Operador","Causas de Baja","Zonas Económicas","Clasificación de Beneficiarios","Tipos de Servicio al Cliente","Documentos del Cliente","Contactos Destinatarios","Remitentes Destinatarios","Responsables de Venta","Beneficiarios","Tipos de Servicios","Causas de Cancelación de Servicios","Causas de Cancelación","Incidencias de viaje","Acciones","Equipo Adicional","Embalajes","Clasificación de Productos","Productos"],
+        TRA:  ["Marcas","Modelos","Accesorios de Unidad","Aparatos de Medición","Tipos de Unidad","Tipos de Remolque","Líneas de Transporte","Circuitos","Estatus de Unidades","Causas de Inactividad","Incidencias","Documentos de Viaje","Tipo de Equipo Periférico","Equipo Periférico","Aparatos de Medición Kilometraje","Grupos","Casetas","Tipos de Combustible","Gasolineras","Localidades","Puntos de Interés","Tramos","Status Operadores","Subtipos Operador","Causas de Baja","Zonas Económicas","Clasificación de Beneficiarios","Tipos de Servicio al Cliente","Documentos del Cliente","Contactos Destinatarios","Remitentes Destinatarios","Responsables de Venta","Beneficiarios","Tipos de Servicios","Causas de Cancelación de Servicios","Causas de Cancelación","Incidencias de viaje","Acciones","Equipo Adicional","Embalajes","Clasificación de Productos","Productos"],
+        LIQ:  ["Tarifas de Casetas","Tipos de Combustible","Gasolineras","Causas de Baja","Zonas Económicas","Subtipos de Operador","Modalidad de Viaje","Causa de Gasto Extraordinario"],
+        ADM:  ["Países","Estados","Control Folios","Terminales","Guías Contables","Líneas de Negocio","Monedas","Unidades de Peso","Material Peligroso","Claves de transporte","Tipo permiso SCT","Subtipos de Remolque","Partes del Transporte","Embalajes"],
+        INT:  ["Biblioteca de sonidos","Eventos de Monitoreo","Notificaciones","Puntos de Interés","Proveedores de Rastreo","Geocercas"],
+        CCH:  ["Clasificación de Conceptos de Gasto","Conceptos de Gasto"],
+        AF:   ["Familias","Causas de Baja","Tipos de Mejora","Ubicación del Activo","Responsables del Activo","Beneficiarios"],
+        BAN:  ["Bancos","Cuentas Bancarias","Beneficiarios","Conceptos de Flujo de Efectivo"],
+        CXP:  ["Clasificación de Beneficiarios","Beneficiarios","Servicios"],
+        CON:  ["Centro de Costo","Cuentas Contables","Código Agrupador del SAT","Banco SAT","Métodos de Pago","Beneficiarios"],
+        CXC:  ["Conceptos de Flujo de efectivo","Incidencias","Causas de Cancelación","Cuentas Bancarias","Tipos de Servicios del Cliente","Responsable de ventas","Responsables del Área","Clasificación Beneficiarios","Clientes"],
+        MAN:  ["Clasificación de Acciones","Acciones","Revisiones","Talleres","Tipos de Mecánicos","Mecánicos","Responsable de Mantenimiento","Otras Clasificaciones de Mantenimiento"],
+        ALM:  ["Productos","Marcas"],
+        LLA:  ["Localizaciones","Marcas","Diseño de Llantas","Dimensión de Llantas","Marcas de Llantas Renovadas","Diseño de Llantas Renovadas","Causas de Reparación"],
+        VIG:  ["Checklist","Causa de Entrada","Causa de Salida"],
+        COM:  ["Proveedores","Familias de Productos","Productos","Unidades de Medida","Almacenes","Clasificación de Gastos"],
+      };
       const selectedModIds = Object.entries(selectedModules).filter(([,v])=>v).map(([k])=>k);
-
+      let totalCatalogs = 0;
       for (const modId of selectedModIds) {
-        // Get catalog names from any existing client's data for this module
-        const templates = await sbFetch("catalogs", { filters: [["module_id", modId]] });
-        const unique = [];
-        const seen = new Set();
-        templates.forEach(t => {
-          // Use catalog_key pattern without client prefix
-          const baseKey = t.catalog_key;
-          if (!seen.has(baseKey)) { seen.add(baseKey); unique.push(t); }
-        });
-        // Insert catalogs for new client
-        for (const t of unique) {
+        const names = CATALOG_DEFS[modId] || [];
+        for (let i = 0; i < names.length; i++) {
+          const num = String(i + 1).padStart(5, "0");
           await sbInsert("catalogs", {
-            client_id: cid, module_id: modId,
-            catalog_key: t.catalog_key.replace(/^[^_]+/, cid.slice(0,3).toUpperCase()),
-            catalog_name: t.catalog_name
+            client_id: cid,
+            module_id: modId,
+            catalog_key: `${modId}_${num}`,
+            catalog_name: names[i]
           }).catch(() => {});
+          totalCatalogs++;
         }
       }
-
       const updated = await sbFetch("clients");
       setClients(updated);
-      setMsg(`✓ Cliente "${newClient.name}" creado con ${selectedModIds.length} módulos y sus catálogos`);
+      setMsg(`✓ Cliente "${newClient.name}" creado con ${selectedModIds.length} módulos y ${totalCatalogs} catálogos`);
       setNewClient({ id: "", name: "", pin: "", contactName: "" });
       setStep(1);
       setBusy(false);
@@ -953,20 +963,71 @@ function AdminPanel({ modules, onModuleAdded, onClose }) {
               </div>
             </>}
 
+  const disableClient = async (cid) => {
+    await sbUpdate("clients", { active: false }, [["id", cid]]);
+    setClients(prev => prev.map(c => c.id === cid ? { ...c, active: false } : c));
+    setMsg(`✓ Cliente deshabilitado`);
+  };
+
+  const enableClient = async (cid) => {
+    await sbUpdate("clients", { active: true }, [["id", cid]]);
+    setClients(prev => prev.map(c => c.id === cid ? { ...c, active: true } : c));
+    setMsg(`✓ Cliente habilitado`);
+  };
+
+  const deleteClient = async (cid, cname) => {
+    if (!window.confirm(`¿Estás seguro de eliminar a "${cname}"?\n\nEsto borrará TODOS sus catálogos, comentarios y registros de actividad. Esta acción NO se puede deshacer.`)) return;
+    // Delete in order: comments → activity_log → catalogs → profiles → client
+    const cats = await sbFetch("catalogs", { filters: [["client_id", cid]] });
+    for (const cat of cats) {
+      await fetch(`${SB_URL}/rest/v1/comments?catalog_id=eq.${cat.id}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    }
+    await fetch(`${SB_URL}/rest/v1/activity_log?client_id=eq.${encodeURIComponent(cid)}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    await fetch(`${SB_URL}/rest/v1/catalogs?client_id=eq.${encodeURIComponent(cid)}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    await fetch(`${SB_URL}/rest/v1/profiles?client_id=eq.${encodeURIComponent(cid)}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    await fetch(`${SB_URL}/rest/v1/clients?id=eq.${encodeURIComponent(cid)}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    setClients(prev => prev.filter(c => c.id !== cid));
+    setMsg(`✓ Cliente "${cname}" eliminado permanentemente`);
+  };
+
             {/* Existing clients list */}
             {step === 1 && clients.length > 0 && <>
               <div style={{ marginTop: 28, borderTop: "1px solid #F1F5F9", paddingTop: 16 }}>
                 <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, color: "#1E293B" }}>Clientes existentes ({clients.length})</h3>
                 {clients.map(c => (
-                  <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", background: "#F8FAFC", borderRadius: 8, marginBottom: 6 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#E0F2FE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#0369A1" }}>
+                  <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: c.active === false ? "#FEF2F2" : "#F8FAFC", borderRadius: 8, marginBottom: 6, border: `1px solid ${c.active === false ? "#FCA5A5" : "#E2E8F0"}` }}>
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: c.active === false ? "#FEE2E2" : "#E0F2FE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: c.active === false ? "#DC2626" : "#0369A1", flexShrink: 0 }}>
                       {c.name.slice(0, 2).toUpperCase()}
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13, color: "#1E293B" }}>{c.name}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: c.active === false ? "#DC2626" : "#1E293B" }}>{c.name}</div>
                       <div style={{ fontSize: 11, color: "#94A3B8" }}>ID: {c.id}</div>
                     </div>
-                    <span style={{ fontSize: 11, background: "#F0FDF4", color: "#15803D", border: "1px solid #86EFAC", borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>Activo</span>
+                    {/* Status badge */}
+                    <span style={{ fontSize: 10, background: c.active === false ? "#FEF2F2" : "#F0FDF4", color: c.active === false ? "#DC2626" : "#15803D", border: `1px solid ${c.active === false ? "#FCA5A5" : "#86EFAC"}`, borderRadius: 6, padding: "2px 8px", fontWeight: 600, flexShrink: 0 }}>
+                      {c.active === false ? "Inactivo" : "Activo"}
+                    </span>
+                    {/* Actions */}
+                    <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                      {c.active === false ? (
+                        <button onClick={() => enableClient(c.id)}
+                          title="Habilitar cliente"
+                          style={{ background: "#F0FDF4", border: "1px solid #86EFAC", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, color: "#15803D", fontWeight: 600 }}>
+                          ✓ Habilitar
+                        </button>
+                      ) : (
+                        <button onClick={() => disableClient(c.id)}
+                          title="Deshabilitar cliente"
+                          style={{ background: "#FFFBEB", border: "1px solid #FCD34D", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, color: "#B45309", fontWeight: 600 }}>
+                          ⏸ Pausar
+                        </button>
+                      )}
+                      <button onClick={() => deleteClient(c.id, c.name)}
+                        title="Eliminar cliente permanentemente"
+                        style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, color: "#DC2626", fontWeight: 600 }}>
+                        🗑
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
