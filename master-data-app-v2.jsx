@@ -827,6 +827,32 @@ function AdminPanel({ modules, onModuleAdded, onClose }) {
     }
   };
 
+  const disableClient = async (cid) => {
+    await sbUpdate("clients", { active: false }, [["id", cid]]);
+    setClients(prev => prev.map(c => c.id === cid ? { ...c, active: false } : c));
+    setMsg(`✓ Cliente deshabilitado`);
+  };
+
+  const enableClient = async (cid) => {
+    await sbUpdate("clients", { active: true }, [["id", cid]]);
+    setClients(prev => prev.map(c => c.id === cid ? { ...c, active: true } : c));
+    setMsg(`✓ Cliente habilitado`);
+  };
+
+  const deleteClient = async (cid, cname) => {
+    if (!window.confirm(`¿Estás seguro de eliminar a "${cname}"?\n\nEsto borrará TODOS sus catálogos, comentarios y registros de actividad. Esta acción NO se puede deshacer.`)) return;
+    const cats = await sbFetch("catalogs", { filters: [["client_id", cid]] });
+    for (const cat of cats) {
+      await fetch(`${SB_URL}/rest/v1/comments?catalog_id=eq.${cat.id}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    }
+    await fetch(`${SB_URL}/rest/v1/activity_log?client_id=eq.${encodeURIComponent(cid)}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    await fetch(`${SB_URL}/rest/v1/catalogs?client_id=eq.${encodeURIComponent(cid)}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    await fetch(`${SB_URL}/rest/v1/profiles?client_id=eq.${encodeURIComponent(cid)}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    await fetch(`${SB_URL}/rest/v1/clients?id=eq.${encodeURIComponent(cid)}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    setClients(prev => prev.filter(c => c.id !== cid));
+    setMsg(`✓ Cliente "${cname}" eliminado permanentemente`);
+  };
+
   const createModule = async () => {
     if (!newMod.id || !newMod.name) { setMsg("⚠️ ID y nombre son requeridos"); return; }
     await sbInsert("modules", { id: newMod.id.toUpperCase(), name: newMod.name, icon: newMod.icon, color: newMod.color, sort_order: modules.length + 1 });
@@ -962,33 +988,6 @@ function AdminPanel({ modules, onModuleAdded, onClose }) {
                 </button>
               </div>
             </>}
-
-  const disableClient = async (cid) => {
-    await sbUpdate("clients", { active: false }, [["id", cid]]);
-    setClients(prev => prev.map(c => c.id === cid ? { ...c, active: false } : c));
-    setMsg(`✓ Cliente deshabilitado`);
-  };
-
-  const enableClient = async (cid) => {
-    await sbUpdate("clients", { active: true }, [["id", cid]]);
-    setClients(prev => prev.map(c => c.id === cid ? { ...c, active: true } : c));
-    setMsg(`✓ Cliente habilitado`);
-  };
-
-  const deleteClient = async (cid, cname) => {
-    if (!window.confirm(`¿Estás seguro de eliminar a "${cname}"?\n\nEsto borrará TODOS sus catálogos, comentarios y registros de actividad. Esta acción NO se puede deshacer.`)) return;
-    // Delete in order: comments → activity_log → catalogs → profiles → client
-    const cats = await sbFetch("catalogs", { filters: [["client_id", cid]] });
-    for (const cat of cats) {
-      await fetch(`${SB_URL}/rest/v1/comments?catalog_id=eq.${cat.id}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-    }
-    await fetch(`${SB_URL}/rest/v1/activity_log?client_id=eq.${encodeURIComponent(cid)}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-    await fetch(`${SB_URL}/rest/v1/catalogs?client_id=eq.${encodeURIComponent(cid)}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-    await fetch(`${SB_URL}/rest/v1/profiles?client_id=eq.${encodeURIComponent(cid)}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-    await fetch(`${SB_URL}/rest/v1/clients?id=eq.${encodeURIComponent(cid)}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-    setClients(prev => prev.filter(c => c.id !== cid));
-    setMsg(`✓ Cliente "${cname}" eliminado permanentemente`);
-  };
 
             {/* Existing clients list */}
             {step === 1 && clients.length > 0 && <>
