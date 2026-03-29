@@ -647,9 +647,663 @@ function CatalogModal({ cat, user, clientId, modules, users, onSave, onClose }) 
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// MOTOR DE CARGA DE DATOS MAESTROS
+// Agrega este bloque completo al archivo master-data-app-v2.jsx
+// justo ANTES de la línea: "// ── MODULE VIEW ───"
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── CATALOG DATA ENGINE ───────────────────────────────────────────────────────
+
+// Validadores por tipo de campo
+const VALIDATORS = {
+  text:    (v, f) => null,
+  number:  (v, f) => isNaN(Number(v)) ? "Debe ser un número" : null,
+  date:    (v, f) => isNaN(Date.parse(v)) ? "Fecha inválida (YYYY-MM-DD)" : null,
+  email:   (v, f) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? null : "Correo inválido",
+  phone:   (v, f) => /^\d{10}$/.test(v.replace(/\D/g,'')) ? null : "Teléfono: 10 dígitos",
+  boolean: (v, f) => null,
+  select:  (v, f) => !f.allowed_values || JSON.parse(typeof f.allowed_values === 'string' ? f.allowed_values : JSON.stringify(f.allowed_values)).includes(v) ? null : "Valor no permitido",
+  rfc:     (v, f) => /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/.test(v.toUpperCase()) ? null : "RFC inválido (ej: ABC123456XY1)",
+  curp:    (v, f) => /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$/.test(v.toUpperCase()) ? null : "CURP inválido",
+  regex:   (v, f) => {
+    if (!f.regex_pattern) return null;
+    return new RegExp(f.regex_pattern).test(v) ? null : (f.regex_message || "Formato inválido");
+  },
+};
+
+function validateField(value, field, allRecords = [], currentId = null) {
+  const v = String(value || "").trim();
+  // Required
+  if (field.required && !v) return `${field.field_label} es obligatorio`;
+  if (!v) return null; // empty but not required = ok
+  // Max length
+  if (field.max_length && v.length > field.max_length) return `Máximo ${field.max_length} caracteres`;
+  // Min length
+  if (field.min_length && v.length < field.min_length) return `Mínimo ${field.min_length} caracteres`;
+  // Type validator
+  const typeErr = VALIDATORS[field.field_type]?.(v, field);
+  if (typeErr) return typeErr;
+  // Regex
+  if (field.regex_pattern) {
+    const regErr = VALIDATORS.regex(v, field);
+    if (regErr) return regErr;
+  }
+  // Unique
+  if (field.unique_field && allRecords.length) {
+    const dup = allRecords.find(r => r.id !== currentId && String(r.record_data?.[field.field_key] || "").toLowerCase() === v.toLowerCase());
+    if (dup) return `Valor duplicado — ya existe otro registro con este ${field.field_label}`;
+  }
+  return null;
+}
+
+// ── SCHEMA CONFIGURATOR (Admin only) ─────────────────────────────────────────
+function SchemaConfigurator({ catalogKey, catalogName, moduleId, onClose }) {
+  const [fields, setFields] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [editingField, setEditingField] = useState(null);
+  const FIELD_TYPES = [
+    { v: "text",    l: "Texto" }, { v: "number", l: "Número" },
+    { v: "date",    l: "Fecha" }, { v: "email",  l: "Email" },
+    { v: "phone",   l: "Teléfono" }, { v: "select", l: "Selección (lista)" },
+    { v: "boolean", l: "Sí / No" }, { v: "rfc",    l: "RFC" },
+    { v: "curp",    l: "CURP" }, { v: "regex",   l: "Expresión Regular" },
+  ];
+  const emptyField = { field_key: "", field_label: "", field_type: "text", field_order: fields.length + 1, required: false, unique_field: false, max_length: "", min_length: "", regex_pattern: "", regex_message: "", allowed_values: "", placeholder: "", help_text: "" };
+
+  useEffect(() => {
+    sbFetch("catalog_schemas", { filters: [["module_id", moduleId], ["catalog_key", catalogKey]], order: { col: "field_order", asc: true } })
+      .then(d => { setFields(d); setLoading(false); });
+  }, [moduleId, catalogKey]);
+
+  const saveField = async () => {
+    if (!editingField.field_key || !editingField.field_label) { setMsg("⚠️ Clave y etiqueta son requeridas"); return; }
+    setSaving(true);
+    const payload = { ...editingField, module_id: moduleId, catalog_key: catalogKey, catalog_name: catalogName,
+      max_length: editingField.max_length ? Number(editingField.max_length) : null,
+      min_length: editingField.min_length ? Number(editingField.min_length) : null,
+      allowed_values: editingField.allowed_values ? JSON.parse(JSON.stringify(editingField.allowed_values.split(",").map(s => s.trim()).filter(Boolean))) : null,
+    };
+    if (editingField.id) {
+      await sbUpdate("catalog_schemas", payload, [["id", editingField.id]]);
+      setFields(prev => prev.map(f => f.id === editingField.id ? { ...f, ...payload } : f));
+    } else {
+      const created = await sbInsert("catalog_schemas", payload);
+      if (created?.id) setFields(prev => [...prev, created]);
+    }
+    setEditingField(null);
+    setMsg("✓ Campo guardado");
+    setSaving(false);
+  };
+
+  const deleteField = async (id) => {
+    if (!window.confirm("¿Eliminar este campo?")) return;
+    await fetch(`${SB_URL}/rest/v1/catalog_schemas?id=eq.${id}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    setFields(prev => prev.filter(f => f.id !== id));
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 3000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 800, maxHeight: "92vh", overflow: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.2)" }}>
+        <div style={{ background: "#1E3A5F", padding: "16px 22px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, zIndex: 10 }}>
+          <div>
+            <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 11 }}>⚙️ Configurador de Esquema · {catalogKey}</div>
+            <div style={{ color: "#fff", fontWeight: 700, fontSize: 16 }}>{catalogName}</div>
+          </div>
+          <button onClick={onClose} style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", borderRadius: 8, width: 30, height: 30, cursor: "pointer" }}>✕</button>
+        </div>
+        <div style={{ padding: "20px 22px" }}>
+          {msg && <div style={{ background: msg.startsWith("⚠") ? "#FEF2F2" : "#F0FDF4", border: `1px solid ${msg.startsWith("⚠") ? "#FCA5A5" : "#86EFAC"}`, borderRadius: 8, padding: "8px 14px", color: msg.startsWith("⚠") ? "#B91C1C" : "#15803D", fontSize: 13, marginBottom: 14 }}>{msg}</div>}
+
+          {/* Field list */}
+          {loading ? <div style={{ textAlign: "center", padding: 40, color: "#94A3B8" }}>Cargando esquema...</div> : (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1E293B" }}>Campos configurados ({fields.length})</h3>
+                <button onClick={() => setEditingField({ ...emptyField })}
+                  style={{ background: "#1D4ED8", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+                  + Agregar campo
+                </button>
+              </div>
+              {fields.length === 0 && <div style={{ textAlign: "center", padding: 32, color: "#CBD5E1", background: "#F8FAFC", borderRadius: 10, marginBottom: 16 }}>Sin campos configurados — agrega el primero</div>}
+              <div style={{ border: "1px solid #E2E8F0", borderRadius: 10, overflow: "hidden", marginBottom: 20 }}>
+                {fields.map((f, i) => (
+                  <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: i % 2 === 0 ? "#fff" : "#F8FAFC", borderBottom: "1px solid #F1F5F9" }}>
+                    <div style={{ width: 24, height: 24, borderRadius: "50%", background: "#E0F2FE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#0369A1", flexShrink: 0 }}>{f.field_order}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: "#1E293B" }}>{f.field_label} <span style={{ color: "#94A3B8", fontWeight: 400, fontSize: 11 }}>({f.field_key})</span></div>
+                      <div style={{ display: "flex", gap: 6, marginTop: 3, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 10, background: "#EFF6FF", color: "#1D4ED8", borderRadius: 4, padding: "1px 6px" }}>{FIELD_TYPES.find(t => t.v === f.field_type)?.l || f.field_type}</span>
+                        {f.required && <span style={{ fontSize: 10, background: "#FEF2F2", color: "#B91C1C", borderRadius: 4, padding: "1px 6px" }}>Obligatorio</span>}
+                        {f.unique_field && <span style={{ fontSize: 10, background: "#F0FDF4", color: "#15803D", borderRadius: 4, padding: "1px 6px" }}>Único</span>}
+                        {f.max_length && <span style={{ fontSize: 10, background: "#FFFBEB", color: "#B45309", borderRadius: 4, padding: "1px 6px" }}>Máx. {f.max_length}</span>}
+                        {f.reference_catalog && <span style={{ fontSize: 10, background: "#F5F3FF", color: "#6D28D9", borderRadius: 4, padding: "1px 6px" }}>→ {f.reference_catalog}</span>}
+                      </div>
+                    </div>
+                    <button onClick={() => setEditingField({ ...f, allowed_values: Array.isArray(f.allowed_values) ? f.allowed_values.join(", ") : (f.allowed_values || "") })}
+                      style={{ background: "#F1F5F9", border: "1px solid #E2E8F0", color: "#3B82F6", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12 }}>✏️</button>
+                    <button onClick={() => deleteField(f.id)}
+                      style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", color: "#DC2626", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12 }}>🗑</button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Edit field form */}
+          {editingField && (
+            <div style={{ background: "#F8FAFC", border: "2px solid #3B82F6", borderRadius: 12, padding: "18px 20px" }}>
+              <h4 style={{ margin: "0 0 14px", fontSize: 14, color: "#1D4ED8", fontWeight: 700 }}>{editingField.id ? "✏️ Editar campo" : "➕ Nuevo campo"}</h4>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+                <div><label style={lbl}>Clave interna *</label><input value={editingField.field_key} onChange={e => setEditingField(p => ({ ...p, field_key: e.target.value.toLowerCase().replace(/\s+/g, "_") }))} placeholder="ej: codigo" style={inp(true)} /></div>
+                <div><label style={lbl}>Etiqueta visible *</label><input value={editingField.field_label} onChange={e => setEditingField(p => ({ ...p, field_label: e.target.value }))} placeholder="ej: Código" style={inp(true)} /></div>
+                <div><label style={lbl}>Tipo de campo</label>
+                  <select value={editingField.field_type} onChange={e => setEditingField(p => ({ ...p, field_type: e.target.value }))} style={{ ...inp(true), cursor: "pointer" }}>
+                    {FIELD_TYPES.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}
+                  </select>
+                </div>
+                <div><label style={lbl}>Orden</label><input type="number" value={editingField.field_order} onChange={e => setEditingField(p => ({ ...p, field_order: Number(e.target.value) }))} style={inp(true)} /></div>
+                <div><label style={lbl}>Longitud máxima</label><input type="number" value={editingField.max_length || ""} onChange={e => setEditingField(p => ({ ...p, max_length: e.target.value }))} placeholder="Sin límite" style={inp(true)} /></div>
+                <div><label style={lbl}>Placeholder</label><input value={editingField.placeholder || ""} onChange={e => setEditingField(p => ({ ...p, placeholder: e.target.value }))} style={inp(true)} /></div>
+              </div>
+              {/* Toggles */}
+              <div style={{ display: "flex", gap: 16, marginBottom: 12 }}>
+                {[["required", "Obligatorio"], ["unique_field", "No duplicados"]].map(([k, l]) => (
+                  <label key={k} onClick={() => setEditingField(p => ({ ...p, [k]: !p[k] }))}
+                    style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}>
+                    <div style={{ width: 36, height: 20, borderRadius: 10, background: editingField[k] ? "#1D4ED8" : "#CBD5E1", position: "relative", transition: "background 0.2s" }}>
+                      <div style={{ position: "absolute", top: 2, left: editingField[k] ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
+                    </div>
+                    <span style={{ fontSize: 13, color: "#374151" }}>{l}</span>
+                  </label>
+                ))}
+              </div>
+              {/* Conditional fields */}
+              {editingField.field_type === "select" && (
+                <div style={{ marginBottom: 12 }}>
+                  <label style={lbl}>Valores permitidos (separados por coma)</label>
+                  <input value={editingField.allowed_values || ""} onChange={e => setEditingField(p => ({ ...p, allowed_values: e.target.value }))} placeholder="Opción 1, Opción 2, Opción 3" style={inp(true)} />
+                </div>
+              )}
+              {editingField.field_type === "regex" && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                  <div><label style={lbl}>Expresión regular</label><input value={editingField.regex_pattern || ""} onChange={e => setEditingField(p => ({ ...p, regex_pattern: e.target.value }))} placeholder="ej: ^\d{5}$" style={inp(true)} /></div>
+                  <div><label style={lbl}>Mensaje de error</label><input value={editingField.regex_message || ""} onChange={e => setEditingField(p => ({ ...p, regex_message: e.target.value }))} placeholder="ej: Debe ser 5 dígitos" style={inp(true)} /></div>
+                </div>
+              )}
+              {/* FK reference */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 14 }}>
+                <div><label style={lbl}>Módulo referenciado</label><input value={editingField.reference_module || ""} onChange={e => setEditingField(p => ({ ...p, reference_module: e.target.value.toUpperCase() }))} placeholder="ej: TRA" style={inp(true)} /></div>
+                <div><label style={lbl}>Catálogo referenciado</label><input value={editingField.reference_catalog || ""} onChange={e => setEditingField(p => ({ ...p, reference_catalog: e.target.value.toUpperCase() }))} placeholder="ej: TRA_00001" style={inp(true)} /></div>
+                <div><label style={lbl}>Campo a mostrar</label><input value={editingField.reference_field || ""} onChange={e => setEditingField(p => ({ ...p, reference_field: e.target.value }))} placeholder="ej: descripcion" style={inp(true)} /></div>
+              </div>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button onClick={() => setEditingField(null)} style={{ ...btnStyle("ghost"), border: "1px solid #E2E8F0" }}>Cancelar</button>
+                <button onClick={saveField} disabled={saving} style={{ ...btnStyle("primary"), opacity: saving ? 0.7 : 1 }}>{saving ? "Guardando..." : "Guardar campo"}</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── CATALOG DATA MODAL (Records + Import) ─────────────────────────────────────
+function CatalogDataModal({ catalog, clientId, user, onClose }) {
+  const [tab, setTab] = useState("records");
+  const [schema, setSchema] = useState([]);
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showSchema, setShowSchema] = useState(false);
+  const [editingRecord, setEditingRecord] = useState(null); // null | {} | {id,...}
+  const [formData, setFormData] = useState({});
+  const [formErrors, setFormErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
+  const [msg, setMsg] = useState("");
+  // Import state
+  const [importFile, setImportFile] = useState(null);
+  const [importPreview, setImportPreview] = useState(null); // {headers, rows, errors}
+  const [importing, setImporting] = useState(false);
+  const [refData, setRefData] = useState({}); // {catalog_key: [records]}
+
+  const isAdmin = user.role === "admin";
+  const isReadonly = user.role === "cliente";
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      const [sch, recs] = await Promise.all([
+        sbFetch("catalog_schemas", { filters: [["module_id", catalog.module_id], ["catalog_key", catalog.catalog_key]], order: { col: "field_order", asc: true } }),
+        sbFetch("catalog_records", { filters: [["client_id", clientId], ["catalog_key", catalog.catalog_key]], order: { col: "created_at", asc: true } }),
+      ]);
+      setSchema(sch.filter(f => f.active !== false));
+      setRecords(recs.filter(r => r.status !== "eliminado"));
+      // Load reference data for FK fields
+      const fkFields = sch.filter(f => f.reference_catalog);
+      for (const f of fkFields) {
+        const refRecs = await sbFetch("catalog_records", { filters: [["client_id", clientId], ["catalog_key", f.reference_catalog]] });
+        setRefData(prev => ({ ...prev, [f.reference_catalog]: refRecs.filter(r => r.status !== "eliminado") }));
+      }
+      setLoading(false);
+    };
+    load();
+  }, [catalog.catalog_key, clientId]);
+
+  const getFieldOptions = (field) => {
+    if (field.field_type === "select" && field.reference_catalog) {
+      const recs = refData[field.reference_catalog] || [];
+      return recs.map(r => r.record_data?.[field.reference_field] || r.record_data?.descripcion || r.record_data?.nombre || "").filter(Boolean);
+    }
+    if (field.field_type === "select" && field.allowed_values) {
+      const av = field.allowed_values;
+      return Array.isArray(av) ? av : JSON.parse(typeof av === "string" ? av : JSON.stringify(av));
+    }
+    return [];
+  };
+
+  const validateForm = (data) => {
+    const errors = {};
+    schema.forEach(f => {
+      const err = validateField(data[f.field_key], f, records, editingRecord?.id);
+      if (err) errors[f.field_key] = err;
+    });
+    return errors;
+  };
+
+  const openNew = () => {
+    const defaults = {};
+    schema.forEach(f => { defaults[f.field_key] = f.default_value || ""; });
+    setFormData(defaults);
+    setFormErrors({});
+    setEditingRecord({});
+  };
+
+  const openEdit = (rec) => {
+    setFormData({ ...rec.record_data });
+    setFormErrors({});
+    setEditingRecord(rec);
+  };
+
+  const saveRecord = async () => {
+    const errors = validateForm(formData);
+    if (Object.keys(errors).length) { setFormErrors(errors); setMsg("⚠️ Corrige los errores antes de guardar"); return; }
+    setSaving(true);
+    const payload = { client_id: clientId, module_id: catalog.module_id, catalog_key: catalog.catalog_key, record_data: formData, imported_from: "manual", updated_by: user.name, updated_at: new Date().toISOString() };
+    if (editingRecord?.id) {
+      await sbUpdate("catalog_records", payload, [["id", editingRecord.id]]);
+      setRecords(prev => prev.map(r => r.id === editingRecord.id ? { ...r, record_data: formData } : r));
+      setMsg("✓ Registro actualizado");
+    } else {
+      payload.created_by = user.name;
+      const created = await sbInsert("catalog_records", payload);
+      if (created?.id) setRecords(prev => [...prev, created]);
+      setMsg("✓ Registro creado");
+    }
+    setEditingRecord(null);
+    setSaving(false);
+  };
+
+  const deleteRecord = async (rec) => {
+    if (!window.confirm("¿Eliminar este registro?")) return;
+    await sbUpdate("catalog_records", { status: "eliminado", updated_by: user.name }, [["id", rec.id]]);
+    setRecords(prev => prev.filter(r => r.id !== rec.id));
+    setMsg("✓ Registro eliminado");
+  };
+
+  // ── IMPORT ──────────────────────────────────────────────────────────────────
+  const downloadTemplate = () => {
+    const headers = schema.map(f => f.field_label);
+    const example = schema.map(f => f.placeholder || f.field_label);
+    const csv = [headers, example].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }));
+    a.download = `plantilla_${catalog.catalog_key}.csv`;
+    a.click();
+  };
+
+  const processImportFile = (file) => {
+    setImportFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      const lines = text.split("\n").filter(l => l.trim());
+      if (lines.length < 2) { setMsg("⚠️ El archivo debe tener al menos un encabezado y un registro"); return; }
+      // Parse CSV
+      const parseCSVLine = (line) => {
+        const result = [];
+        let curr = "", inQuotes = false;
+        for (const ch of line) {
+          if (ch === '"') { inQuotes = !inQuotes; }
+          else if (ch === ',' && !inQuotes) { result.push(curr.trim()); curr = ""; }
+          else curr += ch;
+        }
+        result.push(curr.trim());
+        return result;
+      };
+      const headers = parseCSVLine(lines[0]).map(h => h.replace(/"/g, "").trim());
+      // Map headers to field_labels
+      const fieldMap = {};
+      headers.forEach((h, i) => {
+        const field = schema.find(f => f.field_label.toLowerCase() === h.toLowerCase() || f.field_key.toLowerCase() === h.toLowerCase());
+        if (field) fieldMap[i] = field;
+      });
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        const vals = parseCSVLine(lines[i]);
+        const rowData = {};
+        const rowErrors = [];
+        headers.forEach((h, j) => {
+          const field = fieldMap[j];
+          if (!field) return;
+          const value = (vals[j] || "").replace(/"/g, "").trim();
+          rowData[field.field_key] = value;
+          const err = validateField(value, field, [...records, ...rows.map(r => ({ id: null, record_data: r.data }))], null);
+          if (err) rowErrors.push({ field: field.field_label, error: err });
+        });
+        rows.push({ lineNum: i + 1, data: rowData, errors: rowErrors, valid: rowErrors.length === 0 });
+      }
+      setImportPreview({ headers, rows });
+      setMsg(`Vista previa: ${rows.filter(r => r.valid).length} válidos, ${rows.filter(r => !r.valid).length} con errores`);
+    };
+    reader.readAsText(file, "UTF-8");
+  };
+
+  const confirmImport = async () => {
+    if (!importPreview) return;
+    setImporting(true);
+    const validRows = importPreview.rows.filter(r => r.valid);
+    const batchId = `batch_${Date.now()}`;
+    let created = 0;
+    for (const row of validRows) {
+      const rec = await sbInsert("catalog_records", { client_id: clientId, module_id: catalog.module_id, catalog_key: catalog.catalog_key, record_data: row.data, status: "activo", imported_from: "import", import_batch: batchId, created_by: user.name, updated_by: user.name });
+      if (rec?.id) { setRecords(prev => [...prev, rec]); created++; }
+    }
+    await sbInsert("import_batches", { client_id: clientId, module_id: catalog.module_id, catalog_key: catalog.catalog_key, catalog_name: catalog.catalog_name, filename: importFile?.name || "import.csv", total_rows: importPreview.rows.length, valid_rows: validRows.length, error_rows: importPreview.rows.filter(r => !r.valid).length, status: "completed", imported_by: user.name });
+    setImportPreview(null); setImportFile(null);
+    setMsg(`✓ Importación completada: ${created} registros creados`);
+    setTab("records");
+    setImporting(false);
+  };
+
+  const filteredRecords = records.filter(r =>
+    schema.some(f => String(r.record_data?.[f.field_key] || "").toLowerCase().includes(search.toLowerCase()))
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 1000, maxHeight: "95vh", overflow: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.25)", display: "flex", flexDirection: "column" }}>
+        {/* Header */}
+        <div style={{ background: "#1E3A5F", padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+          <div>
+            <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 11 }}>📊 Datos del Catálogo · {catalog.catalog_key}</div>
+            <div style={{ color: "#fff", fontWeight: 700, fontSize: 16 }}>{catalog.catalog_name}</div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {isAdmin && schema.length > 0 && (
+              <button onClick={() => setShowSchema(true)}
+                style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12 }}>
+                ⚙️ Configurar campos
+              </button>
+            )}
+            {isAdmin && schema.length === 0 && (
+              <button onClick={() => setShowSchema(true)}
+                style={{ background: "#F59E0B", border: "none", color: "#fff", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+                ⚙️ Definir estructura
+              </button>
+            )}
+            <button onClick={onClose} style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", borderRadius: 8, width: 30, height: 30, cursor: "pointer" }}>✕</button>
+          </div>
+        </div>
+
+        {/* Schema configurator overlay */}
+        {showSchema && (
+          <SchemaConfigurator catalogKey={catalog.catalog_key} catalogName={catalog.catalog_name} moduleId={catalog.module_id}
+            onClose={() => { setShowSchema(false); sbFetch("catalog_schemas", { filters: [["module_id", catalog.module_id], ["catalog_key", catalog.catalog_key]], order: { col: "field_order", asc: true } }).then(d => setSchema(d.filter(f => f.active !== false))); }} />
+        )}
+
+        <div style={{ padding: "16px 20px", flex: 1, overflow: "auto" }}>
+          {msg && <div style={{ background: msg.startsWith("⚠") ? "#FEF2F2" : "#F0FDF4", border: `1px solid ${msg.startsWith("⚠") ? "#FCA5A5" : "#86EFAC"}`, borderRadius: 8, padding: "8px 14px", color: msg.startsWith("⚠") ? "#B91C1C" : "#15803D", fontSize: 13, marginBottom: 14 }}>{msg}</div>}
+
+          {schema.length === 0 && !loading ? (
+            <div style={{ textAlign: "center", padding: 60, color: "#94A3B8" }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>⚙️</div>
+              <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: "#64748B" }}>Sin estructura configurada</div>
+              <div style={{ fontSize: 13, marginBottom: 20 }}>Define los campos de este catálogo para comenzar a cargar datos</div>
+              {isAdmin && <button onClick={() => setShowSchema(true)} style={{ ...btnStyle("primary") }}>Configurar estructura</button>}
+            </div>
+          ) : (
+            <>
+              {/* Tabs */}
+              <div style={{ display: "flex", gap: 4, marginBottom: 16, background: "#F1F5F9", borderRadius: 10, padding: 4 }}>
+                {[["records", "📋 Registros manuales"], ["import", "📤 Importar layout"]].map(([k, l]) => (
+                  <button key={k} onClick={() => { setTab(k); setMsg(""); setEditingRecord(null); }}
+                    style={{ flex: 1, background: tab === k ? "#fff" : "transparent", border: "none", borderRadius: 8, padding: "8px", cursor: "pointer", fontWeight: tab === k ? 700 : 400, color: tab === k ? "#1D4ED8" : "#64748B", fontSize: 13 }}>{l}</button>
+                ))}
+              </div>
+
+              {/* ── RECORDS TAB ── */}
+              {tab === "records" && (
+                <>
+                  {/* Record form */}
+                  {editingRecord !== null && !isReadonly && (
+                    <div style={{ background: "#F8FAFC", border: "2px solid #3B82F6", borderRadius: 12, padding: "16px 18px", marginBottom: 16 }}>
+                      <h4 style={{ margin: "0 0 14px", fontSize: 14, color: "#1D4ED8", fontWeight: 700 }}>
+                        {editingRecord?.id ? "✏️ Editar registro" : "➕ Nuevo registro"}
+                      </h4>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12, marginBottom: 14 }}>
+                        {schema.map(f => (
+                          <div key={f.field_key}>
+                            <label style={{ ...lbl, color: f.required ? "#B91C1C" : "#64748B" }}>
+                              {f.field_label} {f.required && "*"}
+                            </label>
+                            {f.field_type === "boolean" ? (
+                              <select value={formData[f.field_key] || ""} onChange={e => setFormData(p => ({ ...p, [f.field_key]: e.target.value }))} style={{ ...inp(true), cursor: "pointer" }}>
+                                <option value="">— Seleccionar —</option>
+                                <option value="SI">Sí</option>
+                                <option value="NO">No</option>
+                              </select>
+                            ) : (f.field_type === "select" || (f.field_type === "select" && f.reference_catalog)) ? (
+                              <select value={formData[f.field_key] || ""} onChange={e => setFormData(p => ({ ...p, [f.field_key]: e.target.value }))} style={{ ...inp(true), cursor: "pointer", borderColor: formErrors[f.field_key] ? "#EF4444" : "#E2E8F0" }}>
+                                <option value="">{f.placeholder || "— Seleccionar —"}</option>
+                                {getFieldOptions(f).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                              </select>
+                            ) : (
+                              <input
+                                type={f.field_type === "date" ? "date" : f.field_type === "number" ? "number" : "text"}
+                                value={formData[f.field_key] || ""}
+                                onChange={e => { setFormData(p => ({ ...p, [f.field_key]: e.target.value })); if (formErrors[f.field_key]) setFormErrors(p => ({ ...p, [f.field_key]: null })); }}
+                                placeholder={f.placeholder || ""}
+                                maxLength={f.max_length || undefined}
+                                style={{ ...inp(true), borderColor: formErrors[f.field_key] ? "#EF4444" : "#E2E8F0" }}
+                              />
+                            )}
+                            {formErrors[f.field_key] && <div style={{ color: "#EF4444", fontSize: 11, marginTop: 3 }}>⚠ {formErrors[f.field_key]}</div>}
+                            {f.help_text && !formErrors[f.field_key] && <div style={{ color: "#94A3B8", fontSize: 11, marginTop: 3 }}>{f.help_text}</div>}
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                        <button onClick={() => { setEditingRecord(null); setFormErrors({}); }} style={{ ...btnStyle("ghost"), border: "1px solid #E2E8F0" }}>Cancelar</button>
+                        <button onClick={saveRecord} disabled={saving} style={{ ...btnStyle("primary"), opacity: saving ? 0.7 : 1 }}>{saving ? "Guardando..." : "Guardar registro"}</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Toolbar */}
+                  <div style={{ display: "flex", gap: 10, marginBottom: 14, alignItems: "center" }}>
+                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar registros..."
+                      style={{ ...inp(true), width: 240 }} />
+                    <span style={{ color: "#94A3B8", fontSize: 12 }}>{filteredRecords.length} registros</span>
+                    {!isReadonly && editingRecord === null && (
+                      <button onClick={openNew} style={{ ...btnStyle("primary"), marginLeft: "auto" }}>+ Nuevo registro</button>
+                    )}
+                  </div>
+
+                  {/* Records table */}
+                  {loading ? <div style={{ textAlign: "center", padding: 40, color: "#94A3B8" }}>Cargando registros...</div> : (
+                    <div style={{ border: "1px solid #E2E8F0", borderRadius: 10, overflow: "auto" }}>
+                      {filteredRecords.length === 0 ? (
+                        <div style={{ textAlign: "center", padding: 40, color: "#CBD5E1" }}>
+                          {records.length === 0 ? "Sin registros aún — agrega el primero" : "Sin resultados"}
+                        </div>
+                      ) : (
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                          <thead>
+                            <tr style={{ background: "#F8FAFC" }}>
+                              <th style={{ padding: "8px 12px", textAlign: "left", color: "#64748B", fontWeight: 600, fontSize: 11, textTransform: "uppercase", borderBottom: "1px solid #E2E8F0", whiteSpace: "nowrap" }}>#</th>
+                              {schema.map(f => (
+                                <th key={f.field_key} style={{ padding: "8px 12px", textAlign: "left", color: "#64748B", fontWeight: 600, fontSize: 11, textTransform: "uppercase", borderBottom: "1px solid #E2E8F0", whiteSpace: "nowrap" }}>
+                                  {f.field_label}
+                                </th>
+                              ))}
+                              {!isReadonly && <th style={{ padding: "8px 12px", borderBottom: "1px solid #E2E8F0", color: "#64748B", fontSize: 11, textTransform: "uppercase" }}>Acciones</th>}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredRecords.map((r, i) => (
+                              <tr key={r.id} style={{ borderBottom: "1px solid #F1F5F9" }}
+                                onMouseEnter={e => e.currentTarget.style.background = "#F8FAFC"}
+                                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                                <td style={{ padding: "8px 12px", color: "#94A3B8", fontSize: 12 }}>{i + 1}</td>
+                                {schema.map(f => (
+                                  <td key={f.field_key} style={{ padding: "8px 12px", color: "#1E293B", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {f.field_type === "boolean" ? (r.record_data?.[f.field_key] === "SI" ? "✅" : "❌") : (r.record_data?.[f.field_key] || <span style={{ color: "#CBD5E1" }}>—</span>)}
+                                  </td>
+                                ))}
+                                {!isReadonly && (
+                                  <td style={{ padding: "8px 12px" }}>
+                                    <div style={{ display: "flex", gap: 6 }}>
+                                      <button onClick={() => openEdit(r)}
+                                        style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", color: "#1D4ED8", borderRadius: 6, padding: "3px 10px", cursor: "pointer", fontSize: 12 }}>✏️</button>
+                                      <button onClick={() => deleteRecord(r)}
+                                        style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", color: "#DC2626", borderRadius: 6, padding: "3px 10px", cursor: "pointer", fontSize: 12 }}>🗑</button>
+                                    </div>
+                                  </td>
+                                )}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* ── IMPORT TAB ── */}
+              {tab === "import" && (
+                <div>
+                  {/* Step 1: Download template */}
+                  <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "16px 18px", marginBottom: 16 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: "#1D4ED8", marginBottom: 8 }}>Paso 1 — Descarga la plantilla</div>
+                    <div style={{ fontSize: 13, color: "#374151", marginBottom: 12 }}>
+                      Descarga el archivo CSV con la estructura correcta para este catálogo ({schema.length} columnas). Llena los datos y sube el archivo.
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                      {schema.map(f => (
+                        <span key={f.field_key} style={{ fontSize: 11, background: f.required ? "#FEE2E2" : "#E0F2FE", color: f.required ? "#991B1B" : "#0369A1", borderRadius: 4, padding: "2px 8px", fontWeight: 600 }}>
+                          {f.field_label}{f.required ? " *" : ""}
+                        </span>
+                      ))}
+                    </div>
+                    <button onClick={downloadTemplate} style={{ ...btnStyle("primary"), fontSize: 13 }}>⬇ Descargar plantilla CSV</button>
+                  </div>
+
+                  {/* Step 2: Upload */}
+                  <div style={{ background: "#F8FAFC", border: "2px dashed #CBD5E1", borderRadius: 10, padding: "24px", marginBottom: 16, textAlign: "center" }}
+                    onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = "#3B82F6"; }}
+                    onDragLeave={e => { e.currentTarget.style.borderColor = "#CBD5E1"; }}
+                    onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = "#CBD5E1"; const f = e.dataTransfer.files[0]; if (f) processImportFile(f); }}>
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>📂</div>
+                    <div style={{ fontWeight: 600, color: "#374151", marginBottom: 6 }}>Paso 2 — Sube tu archivo CSV</div>
+                    <div style={{ fontSize: 13, color: "#94A3B8", marginBottom: 14 }}>Arrastra aquí o haz clic para seleccionar</div>
+                    <input type="file" accept=".csv,.txt" id="import-file-input" style={{ display: "none" }}
+                      onChange={e => { const f = e.target.files[0]; if (f) processImportFile(f); }} />
+                    <button onClick={() => document.getElementById("import-file-input").click()}
+                      style={{ ...btnStyle("ghost"), border: "2px solid #3B82F6", color: "#1D4ED8", fontWeight: 600 }}>
+                      Seleccionar archivo
+                    </button>
+                    {importFile && <div style={{ marginTop: 10, fontSize: 13, color: "#15803D", fontWeight: 600 }}>📄 {importFile.name}</div>}
+                  </div>
+
+                  {/* Step 3: Preview */}
+                  {importPreview && (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: "#1E293B" }}>
+                          Paso 3 — Vista previa
+                          <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 400 }}>
+                            <span style={{ color: "#15803D" }}>✓ {importPreview.rows.filter(r => r.valid).length} válidos</span>
+                            {importPreview.rows.filter(r => !r.valid).length > 0 && <span style={{ color: "#DC2626", marginLeft: 8 }}>✗ {importPreview.rows.filter(r => !r.valid).length} con errores</span>}
+                          </span>
+                        </div>
+                        <button onClick={confirmImport} disabled={importing || importPreview.rows.filter(r => r.valid).length === 0}
+                          style={{ ...btnStyle("success"), opacity: importing ? 0.7 : 1 }}>
+                          {importing ? "Importando..." : `✓ Importar ${importPreview.rows.filter(r => r.valid).length} registros válidos`}
+                        </button>
+                      </div>
+                      <div style={{ border: "1px solid #E2E8F0", borderRadius: 10, overflow: "auto", maxHeight: 350 }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                          <thead>
+                            <tr style={{ background: "#F8FAFC" }}>
+                              <th style={{ padding: "6px 10px", borderBottom: "1px solid #E2E8F0", color: "#64748B", fontWeight: 600 }}>Fila</th>
+                              <th style={{ padding: "6px 10px", borderBottom: "1px solid #E2E8F0", color: "#64748B", fontWeight: 600 }}>Estado</th>
+                              {schema.map(f => <th key={f.field_key} style={{ padding: "6px 10px", borderBottom: "1px solid #E2E8F0", color: "#64748B", fontWeight: 600, whiteSpace: "nowrap" }}>{f.field_label}</th>)}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {importPreview.rows.map(row => (
+                              <tr key={row.lineNum} style={{ background: row.valid ? "#fff" : "#FFF5F5", borderBottom: "1px solid #F1F5F9" }}>
+                                <td style={{ padding: "6px 10px", color: "#94A3B8" }}>{row.lineNum}</td>
+                                <td style={{ padding: "6px 10px" }}>
+                                  {row.valid
+                                    ? <span style={{ color: "#15803D", fontWeight: 600 }}>✓ OK</span>
+                                    : <span style={{ color: "#DC2626", fontSize: 11 }} title={row.errors.map(e => `${e.field}: ${e.error}`).join("\n")}>✗ {row.errors.length} error(es)</span>}
+                                </td>
+                                {schema.map(f => {
+                                  const hasErr = row.errors.some(e => e.field === f.field_label);
+                                  return <td key={f.field_key} style={{ padding: "6px 10px", color: hasErr ? "#DC2626" : "#1E293B", background: hasErr ? "#FEE2E2" : "transparent", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.data[f.field_key] || "—"}</td>;
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {importPreview.rows.some(r => !r.valid) && (
+                        <div style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 8, padding: "10px 14px", marginTop: 10, fontSize: 12, color: "#B91C1C" }}>
+                          <strong>Errores detectados:</strong> Las filas en rojo no serán importadas. Corrígelas en el archivo y vuelve a subirlo.
+                          <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
+                            {importPreview.rows.filter(r => !r.valid).slice(0, 5).map(r => (
+                              <li key={r.lineNum}>Fila {r.lineNum}: {r.errors.map(e => `${e.field} — ${e.error}`).join(", ")}</li>
+                            ))}
+                            {importPreview.rows.filter(r => !r.valid).length > 5 && <li>...y {importPreview.rows.filter(r => !r.valid).length - 5} más</li>}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+// ══════════════════════════════════════════════════════════════════════════════
+// FIN DEL MOTOR DE CARGA
+// ══════════════════════════════════════════════════════════════════════════════
+
+
 // ── MODULE VIEW ───────────────────────────────────────────────────────────────
 function ModuleView({ module, catalogs, user, clientId, modules, users, onUpdate, onBack }) {
   const [modal, setModal] = useState(null);
+  const [dataModal, setDataModal] = useState(null);
   const [search, setSearch] = useState("");
   const [fStatus, setFStatus] = useState("Todos");
 
@@ -662,6 +1316,7 @@ function ModuleView({ module, catalogs, user, clientId, modules, users, onUpdate
 
   return (
     <div style={{ fontFamily: "'Segoe UI',system-ui,sans-serif", color: "#1E293B" }}>
+      {dataModal && <CatalogDataModal catalog={dataModal} clientId={clientId} user={user} onClose={() => setDataModal(null)} />}
       {sel && <CatalogModal cat={sel} user={user} clientId={clientId} modules={modules} users={users}
         onSave={updated => onUpdate(updated)} onClose={() => setModal(null)} />}
       {/* Header */}
@@ -733,6 +1388,11 @@ function ModuleView({ module, catalogs, user, clientId, modules, users, onUpdate
                     <button onClick={() => setModal(c.id)}
                       style={{ background: "#F1F5F9", color: "#3B82F6", border: "1px solid #E2E8F0", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
                       {user.role === "cliente" ? "Ver ›" : "Editar ›"}
+                    </button>
+                    <button onClick={() => setDataModal(c)}
+                      title="Ver/cargar datos del catálogo"
+                      style={{ background: "#F0FDF4", color: "#15803D", border: "1px solid #86EFAC", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+                      📊
                     </button>
                   </td>
                 </tr>
