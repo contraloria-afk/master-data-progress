@@ -1408,22 +1408,75 @@ function ModuleView({ module, catalogs, user, clientId, modules, users, onUpdate
 
 // ── ADMIN PANEL ───────────────────────────────────────────────────────────────
 function AdminPanel({ modules, onModuleAdded, onClose }) {
-  const [tab, setTab] = useState("clients");
+  const [tab, setTab] = useState("projects");
   const [clients, setClients] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [allProfiles, setAllProfiles] = useState([]);
   const [newClient, setNewClient] = useState({ id: "", name: "", pin: "", contactName: "" });
   const [selectedModules, setSelectedModules] = useState({});
   const [newMod, setNewMod] = useState({ id: "", name: "", icon: "📁", color: "#6366F1" });
+  const [newProject, setNewProject] = useState({ client_id: "", name: "", status: "Planeado", start_date: "", leader_name: "", leader_email: "" });
+  const [projMods, setProjMods] = useState({});
+  const [projConsultants, setProjConsultants] = useState({});
+  const [editProject, setEditProject] = useState(null);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
-  const [step, setStep] = useState(1); // 1=datos, 2=módulos, 3=confirmación
+  const [step, setStep] = useState(1);
 
   useEffect(() => {
-    sbFetch("clients").then(setClients);
-    // Pre-select all modules
+    sbFetch("clients").then(d => setClients(d));
+    sbFetch("projects", { order: { col: "status", asc: true } }).then(setProjects);
+    sbFetch("profiles").then(d => setAllProfiles(d.filter(p => p.role === "consultor" || p.role === "admin")));
     const all = {};
     modules.forEach(m => { all[m.id] = true; });
     setSelectedModules(all);
   }, [modules]);
+
+  const saveProject = async (proj) => {
+    setBusy(true);
+    const modList = Object.entries(proj._mods || {}).filter(([,v])=>v).map(([k])=>k);
+    const payload = { client_id: proj.client_id, name: proj.name, status: proj.status, start_date: proj.start_date || null, leader_name: proj.leader_name, leader_email: proj.leader_email, modules_assigned: modList, active: true };
+    let projectId;
+    if (proj.id) {
+      await sbUpdate("projects", payload, [["id", proj.id]]);
+      projectId = proj.id;
+      setProjects(prev => prev.map(p => p.id === proj.id ? { ...p, ...payload } : p));
+    } else {
+      const created = await sbInsert("projects", payload);
+      projectId = created?.id;
+      if (created) setProjects(prev => [...prev, created]);
+      // Init catalogs for new project from CATALOG_DEFS
+      if (projectId) {
+        for (const modId of modList) {
+          const names = CATALOG_DEFS[modId] || [];
+          for (let i = 0; i < names.length; i++) {
+            const num = String(i + 1).padStart(5, "0");
+            await sbInsert("catalogs", { client_id: proj.client_id, module_id: modId, catalog_key: `${modId}_${num}`, catalog_name: names[i], project_id: projectId }).catch(() => {});
+          }
+        }
+      }
+    }
+    // Save consultant assignments
+    if (projectId && proj._consultants) {
+      // Delete existing then re-insert
+      await fetch(`${SB_URL}/rest/v1/project_consultants?project_id=eq.${projectId}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+      for (const cid of Object.keys(proj._consultants).filter(k => proj._consultants[k])) {
+        await sbInsert("project_consultants", { project_id: projectId, consultant_id: cid, assigned_by: "Admin" }).catch(() => {});
+      }
+    }
+    setEditProject(null);
+    setMsg(proj.id ? "✓ Proyecto actualizado" : "✓ Proyecto creado con sus catálogos");
+    setBusy(false);
+  };
+
+  const deleteProject = async (pid, pname) => {
+    if (!window.confirm(`¿Eliminar el proyecto "${pname}"? Se borrarán todos sus catálogos.`)) return;
+    await fetch(`${SB_URL}/rest/v1/project_consultants?project_id=eq.${pid}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    await fetch(`${SB_URL}/rest/v1/catalogs?project_id=eq.${pid}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    await fetch(`${SB_URL}/rest/v1/projects?id=eq.${pid}`, { method: "DELETE", headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    setProjects(prev => prev.filter(p => p.id !== pid));
+    setMsg("✓ Proyecto eliminado");
+  };
 
   const toggleMod = (id) => setSelectedModules(p => ({ ...p, [id]: !p[id] }));
   const selCount = Object.values(selectedModules).filter(Boolean).length;
@@ -1535,15 +1588,128 @@ function AdminPanel({ modules, onModuleAdded, onClose }) {
         <div style={{ padding: "20px 24px" }}>
           {/* Tabs */}
           <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#F1F5F9", borderRadius: 10, padding: 4 }}>
-            {[["clients", "👥 Clientes"], ["modules", "📦 Módulos"]].map(([k, l]) => (
+            {[["projects", "🏗 Proyectos"], ["clients", "👥 Clientes"], ["modules", "📦 Módulos"]].map(([k, l]) => (
               <button key={k} onClick={() => { setTab(k); setStep(1); setMsg(""); }}
-                style={{ flex: 1, background: tab === k ? "#fff" : "transparent", border: "none", borderRadius: 8, padding: "8px", cursor: "pointer", fontWeight: tab === k ? 700 : 400, color: tab === k ? "#1D4ED8" : "#64748B", fontSize: 13 }}>{l}</button>
+                style={{ flex: 1, background: tab === k ? "#fff" : "transparent", border: "none", borderRadius: 8, padding: "8px", cursor: "pointer", fontWeight: tab === k ? 700 : 400, color: tab === k ? "#1D4ED8" : "#64748B", fontSize: 12 }}>{l}</button>
             ))}
           </div>
 
           {msg && <div style={{ background: msg.startsWith("⚠️") ? "#FEF2F2" : "#F0FDF4", border: `1px solid ${msg.startsWith("⚠️") ? "#FCA5A5" : "#86EFAC"}`, borderRadius: 8, padding: "10px 14px", color: msg.startsWith("⚠️") ? "#B91C1C" : "#15803D", fontSize: 13, marginBottom: 16 }}>{msg}</div>}
 
           {/* ── CLIENTES TAB ── */}
+          {/* ── PROYECTOS TAB ── */}
+          {tab === "projects" && <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1E293B" }}>Proyectos ({projects.length})</h3>
+              <button onClick={() => {
+                const mods = {}; modules.forEach(m => { mods[m.id] = true; });
+                setEditProject({ client_id: clients[0]?.id || "", name: "", status: "Planeado", start_date: "", leader_name: "", leader_email: "", _mods: mods, _consultants: {} });
+              }} style={{ ...btnStyle("primary"), fontSize: 12 }}>+ Nuevo proyecto</button>
+            </div>
+
+            {/* Project form */}
+            {editProject && (
+              <div style={{ background: "#F8FAFC", border: "2px solid #3B82F6", borderRadius: 12, padding: "18px 20px", marginBottom: 18 }}>
+                <h4 style={{ margin: "0 0 14px", color: "#1D4ED8", fontSize: 14, fontWeight: 700 }}>{editProject.id ? "✏️ Editar proyecto" : "➕ Nuevo proyecto"}</h4>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                  <div>
+                    <label style={lbl}>Cliente *</label>
+                    <select value={editProject.client_id} onChange={e => setEditProject(p => ({ ...p, client_id: e.target.value }))} style={{ ...inp(true), cursor: "pointer" }}>
+                      <option value="">— Seleccionar —</option>
+                      {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={lbl}>Nombre del proyecto *</label>
+                    <input value={editProject.name} onChange={e => setEditProject(p => ({ ...p, name: e.target.value }))} placeholder="ej: Implementación ERP 2025" style={inp(true)} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Status</label>
+                    <select value={editProject.status} onChange={e => setEditProject(p => ({ ...p, status: e.target.value }))} style={{ ...inp(true), cursor: "pointer" }}>
+                      <option>Planeado</option><option>En Proceso</option><option>Terminado</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={lbl}>Fecha de inicio</label>
+                    <input type="date" value={editProject.start_date || ""} onChange={e => setEditProject(p => ({ ...p, start_date: e.target.value }))} style={inp(true)} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Líder del proyecto</label>
+                    <input value={editProject.leader_name || ""} onChange={e => setEditProject(p => ({ ...p, leader_name: e.target.value }))} placeholder="Nombre completo" style={inp(true)} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Correo del líder</label>
+                    <input type="email" value={editProject.leader_email || ""} onChange={e => setEditProject(p => ({ ...p, leader_email: e.target.value }))} placeholder="lider@empresa.com" style={inp(true)} />
+                  </div>
+                </div>
+                {/* Modules */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ ...lbl, marginBottom: 8, display: "block" }}>Módulos del proyecto</label>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+                    {modules.map(m => {
+                      const sel = !!(editProject._mods || {})[m.id];
+                      return (
+                        <label key={m.id} onClick={() => setEditProject(p => ({ ...p, _mods: { ...(p._mods||{}), [m.id]: !sel } }))}
+                          style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", borderRadius: 8, border: `1px solid ${sel ? m.color : "#E2E8F0"}`, background: sel ? m.color + "12" : "#fff", cursor: "pointer", userSelect: "none" }}>
+                          <div style={{ width: 14, height: 14, borderRadius: 3, background: sel ? m.color : "#E2E8F0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            {sel && <span style={{ color: "#fff", fontSize: 9, fontWeight: 700 }}>✓</span>}
+                          </div>
+                          <span style={{ fontSize: 11, fontWeight: sel ? 700 : 400, color: sel ? "#1E293B" : "#64748B" }}>{m.id}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* Consultants */}
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ ...lbl, marginBottom: 8, display: "block" }}>Consultores asignados</label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {allProfiles.map(pr => {
+                      const sel = !!(editProject._consultants || {})[pr.id];
+                      return (
+                        <label key={pr.id} onClick={() => setEditProject(p => ({ ...p, _consultants: { ...(p._consultants||{}), [pr.id]: !sel } }))}
+                          style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20, border: `1px solid ${sel ? "#1D4ED8" : "#E2E8F0"}`, background: sel ? "#EFF6FF" : "#fff", cursor: "pointer", userSelect: "none", fontSize: 12, fontWeight: sel ? 700 : 400, color: sel ? "#1D4ED8" : "#64748B" }}>
+                          {sel ? "✓ " : ""}{pr.name}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                  <button onClick={() => setEditProject(null)} style={{ ...btnStyle("ghost"), border: "1px solid #E2E8F0" }}>Cancelar</button>
+                  <button onClick={() => saveProject(editProject)} disabled={busy || !editProject.client_id || !editProject.name}
+                    style={{ ...btnStyle("primary"), opacity: (busy || !editProject.client_id || !editProject.name) ? 0.5 : 1 }}>
+                    {busy ? "Guardando..." : (editProject.id ? "Actualizar" : "Crear proyecto")}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Projects list */}
+            {projects.map(p => {
+              const client = clients.find(c => c.id === p.client_id);
+              const sc = STATUS_CONFIG[p.status] || STATUS_CONFIG["Planeado"];
+              const mods = Array.isArray(p.modules_assigned) ? p.modules_assigned : [];
+              return (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#F8FAFC", borderRadius: 10, marginBottom: 8, border: "1px solid #E2E8F0" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: "#1E293B" }}>{p.name}</div>
+                    <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>{client?.name} · {mods.length} módulos{p.leader_name ? ` · 👤 ${p.leader_name}` : ""}</div>
+                  </div>
+                  <span style={{ background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`, borderRadius: 12, padding: "2px 10px", fontSize: 11, fontWeight: 600, flexShrink: 0 }}>{p.status}</span>
+                  <button onClick={async () => {
+                    const cons = await sbFetch("project_consultants", { filters: [["project_id", p.id]] });
+                    const consMap = {}; cons.forEach(c => { consMap[c.consultant_id] = true; });
+                    const modMap = {}; mods.forEach(m => { modMap[m] = true; });
+                    setEditProject({ ...p, _mods: modMap, _consultants: consMap });
+                  }} style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", color: "#1D4ED8", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12 }}>✏️</button>
+                  <button onClick={() => deleteProject(p.id, p.name)}
+                    style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", color: "#DC2626", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12 }}>🗑</button>
+                </div>
+              );
+            })}
+          </>}
+
           {tab === "clients" && <>
             {/* Step indicator */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
@@ -1719,22 +1885,166 @@ function AdminPanel({ modules, onModuleAdded, onClose }) {
   );
 }
 
+
+// ── PROJECTS DASHBOARD ────────────────────────────────────────────────────────
+const STATUS_CONFIG = {
+  "En Proceso": { color: "#1D4ED8", bg: "#EFF6FF", border: "#BFDBFE", dot: "#3B82F6" },
+  "Terminado":  { color: "#15803D", bg: "#F0FDF4", border: "#86EFAC", dot: "#22C55E" },
+  "Planeado":   { color: "#92400E", bg: "#FFFBEB", border: "#FCD34D", dot: "#F59E0B" },
+};
+
+function ProjectsDashboard({ user, onSelectProject }) {
+  const [projects, setProjects] = useState([]);
+  const [clients, setClients]   = useState([]);
+  const [loading, setLoading]   = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      const [prjs, cls] = await Promise.all([
+        sbFetch("projects", { order: { col: "status", asc: true } }),
+        sbFetch("clients"),
+      ]);
+      setClients(cls);
+
+      let filtered = prjs.filter(p => p.active !== false);
+      // Consultores: solo proyectos asignados
+      if (user.role === "consultor") {
+        const assigned = await sbFetch("project_consultants", { filters: [["consultant_id", user.id]] });
+        const ids = assigned.map(a => a.project_id);
+        filtered = filtered.filter(p => ids.includes(p.id));
+      }
+      // Order: En Proceso → Planeado → Terminado
+      const ORDER = { "En Proceso": 0, "Planeado": 1, "Terminado": 2 };
+      filtered.sort((a, b) => (ORDER[a.status] ?? 3) - (ORDER[b.status] ?? 3));
+      setProjects(filtered);
+      setLoading(false);
+    };
+    load();
+  }, [user]);
+
+  const getClient = (cid) => clients.find(c => c.id === cid);
+
+  if (loading) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#F8FAFC" }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid #1D4ED8", borderTopColor: "transparent", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
+        <div style={{ color: "#64748B", fontSize: 14 }}>Cargando proyectos...</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #0F172A 0%, #1E3A5F 50%, #0F172A 100%)", display: "flex", flexDirection: "column" }}>
+      {/* Header */}
+      <div style={{ padding: "20px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <img src={ADVANONE_LOGO} alt="ADVAN ONE" style={{ height: 44, objectFit: "contain" }} />
+          <div>
+            <div style={{ color: "#fff", fontWeight: 700, fontSize: 18 }}>Master Data Progress</div>
+            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 12 }}>Selecciona un proyecto para continuar</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ color: "#fff", fontSize: 13, fontWeight: 600 }}>{user.name}</div>
+            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>{ROLES[user.role]}</div>
+          </div>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 13 }}>{user.avatar || user.name[0]}</div>
+          <button onClick={() => onSelectProject(null, "__logout__")} title="Cerrar sesión"
+            style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.5)", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 14 }}>↩</button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, padding: "32px", overflowY: "auto" }}>
+        {projects.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "80px 0", color: "rgba(255,255,255,0.3)" }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>📋</div>
+            <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Sin proyectos asignados</div>
+            <div style={{ fontSize: 14 }}>Contacta al administrador para ser asignado a un proyecto</div>
+          </div>
+        ) : (
+          <>
+            <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, marginBottom: 20 }}>
+              {projects.length} proyecto{projects.length !== 1 ? "s" : ""} {user.role === "consultor" ? "asignado" + (projects.length !== 1 ? "s" : "") : "en total"}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 18 }}>
+              {projects.map(p => {
+                const client = getClient(p.client_id);
+                const sc = STATUS_CONFIG[p.status] || STATUS_CONFIG["Planeado"];
+                const mods = Array.isArray(p.modules_assigned) ? p.modules_assigned : (p.modules_assigned ? JSON.parse(p.modules_assigned) : []);
+                return (
+                  <button key={p.id} onClick={() => onSelectProject(p, client)}
+                    style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: 0, cursor: "pointer", textAlign: "left", transition: "all 0.2s", overflow: "hidden" }}
+                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = "0 12px 40px rgba(0,0,0,0.3)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}>
+                    {/* Card top accent */}
+                    <div style={{ height: 4, background: p.status === "Terminado" ? "#22C55E" : p.status === "En Proceso" ? "#3B82F6" : "#F59E0B" }} />
+                    <div style={{ padding: "20px 22px" }}>
+                      {/* Client logo + name */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                        <div style={{ width: 52, height: 52, borderRadius: 10, background: "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+                          {client?.logo_url
+                            ? <img src={client.logo_url} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                            : <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 20, fontWeight: 700 }}>{client?.name?.slice(0,2).toUpperCase() || "??"}</span>}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, marginBottom: 2 }}>{client?.name || p.client_id}</div>
+                          <div style={{ color: "#fff", fontWeight: 700, fontSize: 15, lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
+                        </div>
+                      </div>
+                      {/* Status badge */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                        <span style={{ background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>
+                          <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: sc.dot, marginRight: 5, verticalAlign: "middle" }} />
+                          {p.status}
+                        </span>
+                        {p.start_date && <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 11 }}>desde {new Date(p.start_date).toLocaleDateString("es-MX", { month: "short", year: "numeric" })}</span>}
+                      </div>
+                      {/* Modules count */}
+                      {mods.length > 0 && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
+                          {mods.slice(0, 6).map(mid => (
+                            <span key={mid} style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)", borderRadius: 4, padding: "2px 7px", fontSize: 10, fontFamily: "monospace" }}>{mid}</span>
+                          ))}
+                          {mods.length > 6 && <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 10 }}>+{mods.length - 6} más</span>}
+                        </div>
+                      )}
+                      {/* Leader */}
+                      {p.leader_name && (
+                        <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 11, display: "flex", alignItems: "center", gap: 5 }}>
+                          <span>👤</span> {p.leader_name}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [user, setUser] = useState(null);
+  const [activeProject, setActiveProject] = useState(null); // {project, client}
   const [modules, setModules] = useState([]);
   const [catalogs, setCatalogs] = useState([]);
   const [clients, setClients] = useState([]);
-  const [selClient, setSelClient] = useState(null);
   const [allUsers, setAllUsers] = useState([]);
-  const [clientLogos, setClientLogos] = useState({});
   const [view, setView] = useState("dashboard");
   const [activeMod, setActiveMod] = useState(null);
   const [activity, setActivity] = useState([]);
   const [showAdmin, setShowAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const clientId = user?.role === "cliente" ? user.client_id : (selClient || null);
+  const clientId = activeProject?.client?.id || (user?.role === "cliente" ? user.client_id : null);
+  const projectId = activeProject?.project?.id || null;
 
   const normalize = (c) => ({
     ...c,
@@ -1747,11 +2057,13 @@ export default function App() {
     quality_autorizado: Number(c.quality_autorizado) || 0,
   });
 
-  const loadAll = useCallback(async (cid) => {
+  const loadAll = useCallback(async (cid, pid) => {
     setLoading(true);
+    const catFilter = pid ? [["project_id", pid]] : [["client_id", cid]];
+    const actFilter = pid ? [["client_id", cid]] : [["client_id", cid]];
     const [cats, acts] = await Promise.all([
-      sbFetch("catalogs", { filters: [["client_id", cid]], order: { col: "catalog_key", asc: true } }),
-      sbFetch("activity_log", { filters: [["client_id", cid]], order: { col: "created_at", asc: false } }),
+      sbFetch("catalogs", { filters: catFilter, order: { col: "catalog_key", asc: true } }),
+      sbFetch("activity_log", { filters: actFilter, order: { col: "created_at", asc: false } }),
     ]);
     setCatalogs(cats.map(normalize));
     setActivity(acts.slice(0, 30));
@@ -1762,16 +2074,13 @@ export default function App() {
     if (!user) return;
     sbFetch("modules", { order: { col: "sort_order", asc: true } }).then(setModules);
     sbFetch("profiles").then(setAllUsers);
-    if (user.role !== "cliente") {
-      sbFetch("clients").then(d => { setClients(d); if (d.length) setSelClient(d[0].id); });
-    }
+    sbFetch("clients").then(setClients);
   }, [user]);
 
   useEffect(() => {
-    if (!clientId || !user) return;
-    loadAll(clientId);
-    // NO polling — updates are handled locally on save
-  }, [clientId, user, loadAll]);
+    if (!activeProject || !user) return;
+    loadAll(clientId, projectId);
+  }, [activeProject, user, loadAll]);
 
   // Called after saving a catalog — updates ONLY that one catalog in local state
   const handleUpdate = useCallback((updated) => {
@@ -1781,51 +2090,49 @@ export default function App() {
 
   if (!user) return <Login onLogin={u => setUser(u)} />;
 
+  // Clients go directly to their project; admins/consultors see project dashboard
+  if (!activeProject) {
+    if (user.role === "cliente") {
+      // Auto-find client project
+      const load = async () => {
+        const prjs = await sbFetch("projects", { filters: [["client_id", user.client_id]] });
+        if (prjs.length) {
+          const cl = clients.find(c => c.id === user.client_id) || { id: user.client_id, name: user.client_id };
+          setActiveProject({ project: prjs[0], client: cl });
+        }
+      };
+      load();
+      return <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", background:"#F8FAFC", color:"#94A3B8" }}>Cargando...</div>;
+    }
+    return <ProjectsDashboard user={user}
+      onSelectProject={(project, client) => {
+        if (client === "__logout__") { setUser(null); return; }
+        setActiveProject({ project, client });
+        setView("dashboard");
+        setActiveMod(null);
+      }} />;
+  }
+
   const modCats = (mid) => catalogs.filter(c => c.module_id === mid);
   const totalDone = catalogs.filter(c => c.status === "Completado").length;
   const totalPct = calcPct(catalogs);
-  const currentClientName = clients.find(c => c.id === clientId)?.name || clientId || "";
-
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#F8FAFC", fontFamily: "'Segoe UI',system-ui,sans-serif", color: "#1E293B" }}>
       {showAdmin && <AdminPanel modules={modules} onModuleAdded={() => sbFetch("modules", { order: { col: "sort_order", asc: true } }).then(setModules)} onClose={() => setShowAdmin(false)} />}
 
       {/* SIDEBAR */}
-      <div style={{ width: 256, background: "#1E3A5F", display: "flex", flexDirection: "column", flexShrink: 0, height: "100vh", position: "sticky", top: 0, overflow: "hidden" }}>
-        {/* Logo — editable por cliente */}
-        <div style={{ padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.15)" }}>
-          <div style={{ textAlign: "center", position: "relative" }}>
-            <img
-              src={clientLogos[clientId] || ADVAN_LOGO}
-              alt="Logo"
-              style={{ height: 42, objectFit: "contain", filter: clientLogos[clientId] ? "none" : "brightness(10)", maxWidth: "90%" }} />
-            {user.role !== "cliente" && (
-              <button onClick={() => document.getElementById("client-logo-input").click()}
-                title="Cambiar logo del cliente"
-                style={{ position: "absolute", top: -4, right: 0, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "50%", width: 22, height: 22, cursor: "pointer", fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
-                ✏️
-              </button>
-            )}
-            <input id="client-logo-input" type="file" accept="image/*" style={{ display: "none" }}
-              onChange={e => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = ev => setClientLogos(prev => ({ ...prev, [clientId]: ev.target.result }));
-                reader.readAsDataURL(file);
-              }} />
-          </div>
-          <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, marginTop: 4, letterSpacing: "0.12em", textTransform: "uppercase", textAlign: "center" }}>Master Data Progress</div>
+      <div style={{ width: 220, background: "#1E3A5F", display: "flex", flexDirection: "column", flexShrink: 0, height: "100vh", position: "sticky", top: 0, overflow: "hidden" }}>
+        {/* ADVAN ONE Logo — always fixed */}
+        <div style={{ padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.2)", textAlign: "center" }}>
+          <img src={ADVANONE_LOGO} alt="ADVAN ONE" style={{ height: 36, objectFit: "contain", maxWidth: "90%" }} />
+          <div style={{ color: "rgba(255,255,255,0.25)", fontSize: 9, marginTop: 3, letterSpacing: "0.1em", textTransform: "uppercase" }}>Master Data Progress</div>
         </div>
-        {/* Client selector (admin/consultor only) */}
+        {/* Back to projects */}
         {user.role !== "cliente" && (
-          <div style={{ padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-            <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 10, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.08em" }}>Cliente activo</div>
-            <select value={selClient || ""} onChange={e => setSelClient(e.target.value)}
-              style={{ width: "100%", background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", borderRadius: 8, padding: "7px 10px", fontSize: 12, outline: "none", cursor: "pointer" }}>
-              {clients.map(c => <option key={c.id} value={c.id} style={{ background: "#1E3A5F" }}>{c.name}</option>)}
-            </select>
-          </div>
+          <button onClick={() => { setActiveProject(null); setCatalogs([]); setView("dashboard"); }}
+            style={{ margin: "8px 10px 0", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
+            ← Proyectos
+          </button>
         )}
         {/* Navigation */}
         <div style={{ flex: 1, overflowY: "auto", padding: "10px 8px" }}>
@@ -1876,15 +2183,15 @@ export default function App() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <h1 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#1E293B" }}>
               {view === "module" && activeMod
-                ? modules.find(m => m.id === activeMod)?.name || ''
-                : view === "activity" ? "📜 Actividad Reciente" : "Dashboard General"}
+                ? modules.find(m => m.id === activeMod)?.name || ""
+                : view === "activity" ? "📜 Actividad Reciente" : activeProject?.client?.name || "Dashboard"}
             </h1>
             {loading && <span style={{ fontSize: 11, color: "#94A3B8", background: "#F1F5F9", borderRadius: 6, padding: "2px 8px" }}>↻ actualizando...</span>}
-            {currentClientName && <span style={{ fontSize: 11, color: "#3B82F6", background: "#EFF6FF", borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{currentClientName}</span>}
+            {activeProject?.project?.name && <span style={{ fontSize: 11, color: "#3B82F6", background: "#EFF6FF", borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{activeProject.project.name}</span>}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => exportCSV(catalogs, modules, clientId || "export")} style={{ ...btnStyle("ghost"), border: "1px solid #E2E8F0", padding: "7px 14px" }}>⬇ CSV</button>
-            <button onClick={() => exportPrint(catalogs, modules, currentClientName || clientId || "reporte")} style={{ ...btnStyle("ghost"), border: "1px solid #E2E8F0", padding: "7px 14px" }}>🖨 PDF</button>
+            <button onClick={() => exportCSV(catalogs, modules, activeProject?.client?.name || clientId || "export")} style={{ ...btnStyle("ghost"), border: "1px solid #E2E8F0", padding: "7px 14px" }}>⬇ CSV</button>
+            <button onClick={() => exportPrint(catalogs, modules, activeProject?.client?.name || clientId || "reporte")} style={{ ...btnStyle("ghost"), border: "1px solid #E2E8F0", padding: "7px 14px" }}>🖨 PDF</button>
           </div>
         </div>
 
@@ -1894,6 +2201,37 @@ export default function App() {
           {/* DASHBOARD */}
           {view === "dashboard" && (
             <div>
+              {/* Project hero card */}
+              <div style={{ background: "linear-gradient(135deg, #1E3A5F 0%, #1D4ED8 100%)", borderRadius: 16, padding: "24px 28px", marginBottom: 22, display: "flex", alignItems: "center", gap: 24, color: "#fff", position: "relative", overflow: "hidden" }}>
+                <div style={{ position: "absolute", right: -20, top: -20, width: 180, height: 180, borderRadius: "50%", background: "rgba(255,255,255,0.04)" }} />
+                <div style={{ position: "absolute", right: 40, bottom: -40, width: 120, height: 120, borderRadius: "50%", background: "rgba(255,255,255,0.03)" }} />
+                {/* Client logo */}
+                <div style={{ width: 80, height: 80, borderRadius: 14, background: "rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden", border: "2px solid rgba(255,255,255,0.15)" }}>
+                  {activeProject?.client?.logo_url
+                    ? <img src={activeProject.client.logo_url} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                    : <span style={{ fontSize: 28, fontWeight: 700, color: "rgba(255,255,255,0.7)" }}>{activeProject?.client?.name?.slice(0,2).toUpperCase() || "??"}</span>}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 4 }}>{activeProject?.client?.name}</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>{activeProject?.project?.name}</div>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    {(() => { const sc = STATUS_CONFIG[activeProject?.project?.status] || STATUS_CONFIG["Planeado"]; return (
+                      <span style={{ background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`, borderRadius: 20, padding: "3px 12px", fontSize: 12, fontWeight: 700 }}>
+                        {activeProject?.project?.status}
+                      </span>
+                    );})()}
+                    {activeProject?.project?.leader_name && (
+                      <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+                        👤 {activeProject.project.leader_name}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontSize: 40, fontWeight: 800, color: totalPct >= 81 ? "#4ADE80" : totalPct >= 60 ? "#FCD34D" : "#F87171" }}>{totalPct}%</div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>avance general</div>
+                </div>
+              </div>
               {/* KPI cards */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 22 }}>
                 {[
