@@ -2059,14 +2059,30 @@ export default function App() {
 
   const loadAll = useCallback(async (cid, pid) => {
     setLoading(true);
-    const catFilter = pid ? [["project_id", pid]] : [["client_id", cid]];
-    const actFilter = pid ? [["client_id", cid]] : [["client_id", cid]];
-    const [cats, acts] = await Promise.all([
-      sbFetch("catalogs", { filters: catFilter, order: { col: "catalog_key", asc: true } }),
-      sbFetch("activity_log", { filters: actFilter, order: { col: "created_at", asc: false } }),
-    ]);
-    setCatalogs(cats.map(normalize));
-    setActivity(acts.slice(0, 30));
+    try {
+      // Try project_id first, fall back to client_id if empty
+      let cats = [];
+      if (pid) {
+        cats = await sbFetch("catalogs", { filters: [["project_id", pid]], order: { col: "catalog_key", asc: true } });
+        // If no catalogs found by project_id, try client_id (migration fallback)
+        if (!cats || cats.length === 0) {
+          cats = await sbFetch("catalogs", { filters: [["client_id", cid]], order: { col: "catalog_key", asc: true } });
+          // Backfill project_id on these catalogs silently
+          if (cats.length > 0 && pid) {
+            cats.forEach(c => {
+              sbUpdate("catalogs", { project_id: pid }, [["id", c.id]]).catch(() => {});
+            });
+          }
+        }
+      } else {
+        cats = await sbFetch("catalogs", { filters: [["client_id", cid]], order: { col: "catalog_key", asc: true } });
+      }
+      const acts = await sbFetch("activity_log", { filters: [["client_id", cid]], order: { col: "created_at", asc: false } });
+      setCatalogs((cats || []).map(normalize));
+      setActivity((acts || []).slice(0, 30));
+    } catch(e) {
+      console.error("loadAll error:", e);
+    }
     setLoading(false);
   }, []);
 
@@ -2093,16 +2109,23 @@ export default function App() {
   // Clients go directly to their project; admins/consultors see project dashboard
   if (!activeProject) {
     if (user.role === "cliente") {
-      // Auto-find client project
-      const load = async () => {
-        const prjs = await sbFetch("projects", { filters: [["client_id", user.client_id]] });
-        if (prjs.length) {
-          const cl = clients.find(c => c.id === user.client_id) || { id: user.client_id, name: user.client_id };
-          setActiveProject({ project: prjs[0], client: cl });
-        }
-      };
-      load();
-      return <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", background:"#F8FAFC", color:"#94A3B8" }}>Cargando...</div>;
+      // Auto-find client project — run once when clients are loaded
+      if (clients.length > 0) {
+        sbFetch("projects", { filters: [["client_id", user.client_id]] }).then(prjs => {
+          if (prjs.length) {
+            const cl = clients.find(c => c.id === user.client_id) || { id: user.client_id, name: user.name };
+            setActiveProject({ project: prjs[0], client: cl });
+          }
+        });
+      }
+      return (
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", background:"#F8FAFC" }}>
+          <div style={{ textAlign:"center" }}>
+            <div style={{ width:40, height:40, borderRadius:"50%", border:"3px solid #1D4ED8", borderTopColor:"transparent", margin:"0 auto 12px" }} />
+            <div style={{ color:"#94A3B8", fontSize:14 }}>Cargando tu proyecto...</div>
+          </div>
+        </div>
+      );
     }
     return <ProjectsDashboard user={user}
       onSelectProject={(project, client) => {
@@ -2110,12 +2133,27 @@ export default function App() {
         setActiveProject({ project, client });
         setView("dashboard");
         setActiveMod(null);
+        setCatalogs([]); // clear previous project data
       }} />;
   }
 
   const modCats = (mid) => catalogs.filter(c => c.module_id === mid);
   const totalDone = catalogs.filter(c => c.status === "Completado").length;
   const totalPct = calcPct(catalogs);
+
+  // Show loading spinner while catalogs load
+  if (loading && catalogs.length === 0) {
+    return (
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", background:"#F8FAFC" }}>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ width:44, height:44, borderRadius:"50%", border:"4px solid #1D4ED8", borderTopColor:"transparent", margin:"0 auto 14px" }} />
+          <div style={{ color:"#64748B", fontSize:15, fontWeight:600 }}>Cargando catálogos...</div>
+          <div style={{ color:"#94A3B8", fontSize:12, marginTop:4 }}>{activeProject?.client?.name} · {activeProject?.project?.name}</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#F8FAFC", fontFamily: "'Segoe UI',system-ui,sans-serif", color: "#1E293B" }}>
       {showAdmin && <AdminPanel modules={modules} onModuleAdded={() => sbFetch("modules", { order: { col: "sort_order", asc: true } }).then(setModules)} onClose={() => setShowAdmin(false)} />}
