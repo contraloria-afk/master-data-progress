@@ -2300,7 +2300,7 @@ export default function App() {
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
                   <span style={{ color: "#94A3B8", fontSize: 11 }}>{totalDone} de {catalogs.length} catálogos completados</span>
-                  {currentClientName && <span style={{ color: "#94A3B8", fontSize: 11 }}>{currentClientName}</span>}
+                  {activeProject?.client?.name && <span style={{ color: "#94A3B8", fontSize: 11 }}>{activeProject.client.name}</span>}
                 </div>
               </div>
               {/* Module cards */}
